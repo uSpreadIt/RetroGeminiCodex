@@ -1,20 +1,38 @@
 
 import React, { useState, useEffect } from 'react';
 import { dataService } from '../services/dataService';
-import { Team } from '../types';
+import { Team, User } from '../types';
+
+export interface InviteData {
+  id: string;
+  name: string;
+  password: string;
+}
 
 interface Props {
   onLogin: (team: Team) => void;
+  onJoin?: (team: Team, user: User) => void;
+  inviteData?: InviteData | null;
 }
 
-const TeamLogin: React.FC<Props> = ({ onLogin }) => {
-  const [view, setView] = useState<'LIST' | 'CREATE' | 'LOGIN'>('LIST');
+const TeamLogin: React.FC<Props> = ({ onLogin, onJoin, inviteData }) => {
+  const [view, setView] = useState<'LIST' | 'CREATE' | 'LOGIN' | 'JOIN'>('LIST');
   const [selectedTeam, setSelectedTeam] = useState<Team | null>(null);
   const [teams, setTeams] = useState<Team[]>([]);
-  
+
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+
+  // Handle invitation link - auto-switch to JOIN view
+  useEffect(() => {
+    if (inviteData) {
+      // Import the team into localStorage
+      const team = dataService.importTeam(inviteData);
+      setSelectedTeam(team);
+      setView('JOIN');
+    }
+  }, [inviteData]);
 
   useEffect(() => {
       setTeams(dataService.getAllTeams());
@@ -41,6 +59,26 @@ const TeamLogin: React.FC<Props> = ({ onLogin }) => {
         onLogin(team);
     } catch (err: any) {
         setError(err.message);
+    }
+  };
+
+  const handleJoin = (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    if (!selectedTeam) return;
+    if (!name.trim()) {
+      setError('Please enter your name');
+      return;
+    }
+    try {
+      const { team, user } = dataService.joinTeamAsParticipant(selectedTeam.id, name.trim());
+      if (onJoin) {
+        onJoin(team, user);
+      } else {
+        onLogin(team);
+      }
+    } catch (err: any) {
+      setError(err.message);
     }
   };
 
@@ -136,6 +174,39 @@ const TeamLogin: React.FC<Props> = ({ onLogin }) => {
                         </div>
                         <button type="submit" className="w-full bg-indigo-600 text-white py-3 rounded-lg font-bold hover:bg-indigo-700 shadow-lg">Enter Workspace</button>
                     </form>
+                </div>
+            )}
+
+            {view === 'JOIN' && selectedTeam && (
+                <div className="flex flex-col h-full justify-center max-w-sm mx-auto">
+                    <div className="text-center mb-6">
+                        <div className="w-16 h-16 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center font-bold text-2xl mx-auto mb-4">
+                            {selectedTeam.name.substring(0,2).toUpperCase()}
+                        </div>
+                        <h2 className="text-2xl font-bold text-slate-800">Join {selectedTeam.name}</h2>
+                        <p className="text-slate-500 text-sm mt-2">You've been invited to join this team. Enter your name to continue.</p>
+                    </div>
+                    {error && <div className="bg-red-50 text-red-600 p-3 rounded mb-4 text-sm">{error}</div>}
+                    <form onSubmit={handleJoin} className="space-y-4">
+                        <div>
+                            <label className="block text-sm font-bold text-slate-500 mb-1">Your Name</label>
+                            <input
+                                type="text"
+                                required
+                                value={name}
+                                onChange={(e) => setName(e.target.value)}
+                                className="w-full border border-slate-300 rounded-lg p-3 bg-white text-slate-900 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                                placeholder="e.g. John Doe"
+                                autoFocus
+                            />
+                        </div>
+                        <button type="submit" className="w-full bg-indigo-600 text-white py-3 rounded-lg font-bold hover:bg-indigo-700 shadow-lg">
+                            Join Team
+                        </button>
+                    </form>
+                    <p className="text-xs text-slate-400 text-center mt-4">
+                        You will join as a participant
+                    </p>
                 </div>
             )}
 

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Team, User } from './types';
 import { dataService } from './services/dataService';
-import TeamLogin from './components/TeamLogin';
+import TeamLogin, { InviteData } from './components/TeamLogin';
 import Dashboard from './components/Dashboard';
 import Session from './components/Session';
 
@@ -10,9 +10,31 @@ const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [view, setView] = useState<'LOGIN' | 'DASHBOARD' | 'SESSION'>('LOGIN');
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [inviteData, setInviteData] = useState<InviteData | null>(null);
+
+  // Check for invitation link on mount
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const joinParam = params.get('join');
+    if (joinParam) {
+      try {
+        const decoded = JSON.parse(atob(joinParam));
+        if (decoded.id && decoded.name && decoded.password) {
+          setInviteData(decoded);
+          // Clean the URL without reloading
+          window.history.replaceState({}, document.title, window.location.pathname);
+        }
+      } catch (e) {
+        console.error('Invalid invitation link');
+      }
+    }
+  }, []);
 
   // Restore session if possible (Simple reload persistence)
   useEffect(() => {
+    // Don't restore session if we have an invite link
+    if (inviteData) return;
+
     const savedTeamId = localStorage.getItem('retro_active_team');
     const savedUserId = localStorage.getItem('retro_active_user');
     if (savedTeamId) {
@@ -28,13 +50,23 @@ const App: React.FC = () => {
         setView('DASHBOARD');
       }
     }
-  }, []);
+  }, [inviteData]);
 
   const handleLogin = (team: Team) => {
     setCurrentTeam(team);
     setCurrentUser(team.members[0]); // Default to facilitator on login
     localStorage.setItem('retro_active_team', team.id);
     localStorage.setItem('retro_active_user', team.members[0].id);
+    setInviteData(null);
+    setView('DASHBOARD');
+  };
+
+  const handleJoin = (team: Team, user: User) => {
+    setCurrentTeam(team);
+    setCurrentUser(user);
+    localStorage.setItem('retro_active_team', team.id);
+    localStorage.setItem('retro_active_user', user.id);
+    setInviteData(null);
     setView('DASHBOARD');
   };
 
@@ -52,7 +84,7 @@ const App: React.FC = () => {
   };
 
   if (!currentTeam) {
-    return <TeamLogin onLogin={handleLogin} />;
+    return <TeamLogin onLogin={handleLogin} onJoin={handleJoin} inviteData={inviteData} />;
   }
 
   // Common Header Logic

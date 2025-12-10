@@ -216,5 +216,63 @@ export const dataService = {
   },
 
   getPresets: () => PRESETS,
-  getHex
+  getHex,
+
+  // Import a team from invitation data (for invited users)
+  importTeam: (inviteData: { id: string; name: string; password: string }): Team => {
+    const data = loadData();
+
+    // Check if team already exists by ID
+    const existingById = data.teams.find(t => t.id === inviteData.id);
+    if (existingById) {
+      return existingById;
+    }
+
+    // Check if team exists by name (different ID - conflict)
+    const existingByName = data.teams.find(t => t.name.toLowerCase() === inviteData.name.toLowerCase());
+    if (existingByName) {
+      // Team name exists but with different ID - return existing
+      return existingByName;
+    }
+
+    // Create the team in localStorage for this invited user
+    const newTeam: Team = {
+      id: inviteData.id,
+      name: inviteData.name,
+      passwordHash: inviteData.password,
+      members: [
+        { id: 'admin-' + Math.random().toString(36).substr(2, 5), name: 'Facilitator', color: USER_COLORS[0], role: 'facilitator' }
+      ],
+      customTemplates: [],
+      retrospectives: [],
+      globalActions: []
+    };
+    data.teams.push(newTeam);
+    saveData(data);
+    return newTeam;
+  },
+
+  // Join a team as a new participant
+  joinTeamAsParticipant: (teamId: string, userName: string): { team: Team; user: User } => {
+    const data = loadData();
+    const team = data.teams.find(t => t.id === teamId);
+    if (!team) throw new Error('Team not found');
+
+    // Check if user already exists by name
+    const existingUser = team.members.find(m => m.name.toLowerCase() === userName.toLowerCase());
+    if (existingUser) {
+      return { team, user: existingUser };
+    }
+
+    // Create new participant
+    const newUser: User = {
+      id: Math.random().toString(36).substr(2, 9),
+      name: userName,
+      color: USER_COLORS[team.members.length % USER_COLORS.length],
+      role: 'participant'
+    };
+    team.members.push(newUser);
+    saveData(data);
+    return { team, user: newUser };
+  }
 };
