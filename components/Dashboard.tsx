@@ -123,14 +123,14 @@ const Dashboard: React.FC<Props> = ({ team, currentUser, onOpenSession, onRefres
   return (
     <div id="main-scroller" className="flex-grow container mx-auto p-6 max-w-6xl overflow-y-auto">
       {/* Invite Modal */}
-      {showInvite && <InviteModal 
-          teamName={team.name} 
-          onClose={() => setShowInvite(false)} 
+      {showInvite && <InviteModal
+          team={team}
+          onClose={() => setShowInvite(false)}
           onLogout={() => {
               localStorage.removeItem('retro_active_team');
               localStorage.removeItem('retro_active_user');
               window.location.reload();
-          }} 
+          }}
       />}
 
       {/* New Retro Modal */}

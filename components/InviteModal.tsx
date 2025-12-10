@@ -1,14 +1,21 @@
 import React from 'react';
+import { Team } from '../types';
 
 interface Props {
-  teamName: string;
+  team: Team;
   onClose: () => void;
   onLogout?: () => void;
 }
 
-const InviteModal: React.FC<Props> = ({ teamName, onClose, onLogout }) => {
-  // Simulate a join link
-  const link = `${window.location.origin}/join/${btoa(teamName)}`; 
+const InviteModal: React.FC<Props> = ({ team, onClose, onLogout }) => {
+  // Encode essential team data for invitation (id, name, password)
+  const inviteData = {
+    id: team.id,
+    name: team.name,
+    password: team.passwordHash
+  };
+  const encodedData = btoa(JSON.stringify(inviteData));
+  const link = `${window.location.origin}?join=${encodedData}`;
   const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(link)}`;
 
   return (
@@ -21,7 +28,7 @@ const InviteModal: React.FC<Props> = ({ teamName, onClose, onLogout }) => {
             <span className="material-symbols-outlined">close</span>
         </button>
 
-        <h3 className="text-xl font-bold text-slate-800 mb-2 text-center">Join {teamName}</h3>
+        <h3 className="text-xl font-bold text-slate-800 mb-2 text-center">Join {team.name}</h3>
         <p className="text-slate-500 text-sm text-center mb-6">Scan to join this team instantly.</p>
 
         <div className="flex justify-center mb-6">
