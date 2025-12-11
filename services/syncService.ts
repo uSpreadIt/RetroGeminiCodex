@@ -22,8 +22,10 @@ class SyncService {
       return this.connectionPromise;
     }
 
-    // Connect to the same host
-    const url = window.location.origin;
+    // Connect to the sync server (supports separate dev server on port 3000)
+    const envUrl = (import.meta as any)?.env?.VITE_SYNC_SERVER_URL as string | undefined;
+    const isViteDev = window.location.port === '5173';
+    const url = envUrl || (isViteDev ? 'http://localhost:3000' : window.location.origin);
     console.log('[SyncService] Connecting to:', url);
 
     this.socket = io(url, {
