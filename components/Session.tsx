@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Team, User, RetroSession, Column, Ticket, ActionItem, Group } from '../types';
 import { dataService } from '../services/dataService';
+import { syncService } from '../services/syncService';
 import InviteModal from './InviteModal';
 
 interface Props {
@@ -9,6 +10,7 @@ interface Props {
   currentUser: User;
   sessionId: string;
   onExit: () => void;
+  onTeamUpdate?: (team: Team) => void;
 }
 
 const PHASES = ['ICEBREAKER', 'WELCOME', 'OPEN_ACTIONS', 'BRAINSTORM', 'GROUP', 'VOTE', 'DISCUSS', 'REVIEW', 'CLOSE'];
@@ -37,17 +39,53 @@ const ICEBREAKERS = [
     "What is the most adventurous thing you've ever done?"
 ];
 
-const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit }) => {
+const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeamUpdate }) => {
   const [session, setSession] = useState<RetroSession | undefined>(team.retrospectives.find(r => r.id === sessionId));
-  
+  const [connectedUsers, setConnectedUsers] = useState<Set<string>>(new Set([currentUser.id]));
+
   // Use a Ref to hold the latest session state to prevent Timer/Interaction race conditions
   const sessionRef = useRef(session);
   useEffect(() => { sessionRef.current = session; }, [session]);
 
+  // Connect to sync service on mount
+  useEffect(() => {
+    syncService.connect();
+    syncService.joinSession(sessionId, currentUser.id, currentUser.name);
+
+    // Listen for session updates from other clients
+    const unsubUpdate = syncService.onSessionUpdate((updatedSession) => {
+      setSession(updatedSession);
+      // Also save to localStorage
+      dataService.updateSession(team.id, updatedSession);
+    });
+
+    // Listen for member events
+    const unsubJoin = syncService.onMemberJoined(({ userId }) => {
+      setConnectedUsers(prev => new Set([...prev, userId]));
+    });
+
+    const unsubLeave = syncService.onMemberLeft(({ userId }) => {
+      setConnectedUsers(prev => {
+        const next = new Set(prev);
+        next.delete(userId);
+        return next;
+      });
+    });
+
+    // Send initial session state (facilitator sends their version)
+    if (currentUser.role === 'facilitator' && session) {
+      setTimeout(() => syncService.updateSession(session), 500);
+    }
+
+    return () => {
+      unsubUpdate();
+      unsubJoin();
+      unsubLeave();
+      syncService.leaveSession();
+    };
+  }, [sessionId, currentUser.id, currentUser.name, currentUser.role, team.id]);
+
   const [showInvite, setShowInvite] = useState(false);
-  const [showSyncModal, setShowSyncModal] = useState(false);
-  const [syncLink, setSyncLink] = useState('');
-  const [syncError, setSyncError] = useState('');
   const [draggedTicket, setDraggedTicket] = useState<Ticket | null>(null);
   
   // Drag Target State for explicit visual cues
@@ -93,6 +131,8 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit }) => {
     updater(newSession);
     dataService.updateSession(team.id, newSession);
     setSession(newSession);
+    // Sync to other clients via WebSocket
+    syncService.updateSession(newSession);
   };
 
   // Calculate votes left in render scope for Auto-Finish Logic
@@ -278,35 +318,6 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit }) => {
       setEditingTicketId(null);
       if(p==='CLOSE') s.status = 'CLOSED';
   });
-
-  // Sync from invitation link (for participants to get latest data)
-  const handleSync = () => {
-    setSyncError('');
-    try {
-      const url = new URL(syncLink);
-      const joinParam = url.searchParams.get('join');
-      if (!joinParam) {
-        setSyncError('Invalid link: no invitation data found');
-        return;
-      }
-      const decoded = JSON.parse(decodeURIComponent(escape(atob(joinParam))));
-      if (!decoded.session) {
-        setSyncError('Invalid link: no session data found');
-        return;
-      }
-      if (decoded.session.id !== sessionId) {
-        setSyncError('This link is for a different session');
-        return;
-      }
-      // Update session with fresh data
-      dataService.updateSession(team.id, decoded.session);
-      setSession(decoded.session);
-      setShowSyncModal(false);
-      setSyncLink('');
-    } catch (e) {
-      setSyncError('Invalid invitation link format');
-    }
-  };
 
   const formatTime = (s: number) => {
       const m = Math.floor(s / 60);
@@ -707,12 +718,11 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit }) => {
              )}
         </div>
         <div className="flex items-center space-x-3">
-             {!isFacilitator && (
-               <button onClick={() => setShowSyncModal(true)} className="flex items-center text-amber-600 hover:text-amber-700 bg-amber-50 px-2 py-1 rounded" title="Sync with facilitator">
-                  <span className="material-symbols-outlined text-lg mr-1">sync</span>
-                  <span className="text-xs font-bold hidden sm:inline">Sync</span>
-               </button>
-             )}
+             {/* Real-time sync indicator */}
+             <div className="flex items-center text-emerald-600 bg-emerald-50 px-2 py-1 rounded" title="Real-time sync active">
+                <span className="material-symbols-outlined text-lg mr-1 animate-pulse">wifi</span>
+                <span className="text-xs font-bold hidden sm:inline">Live</span>
+             </div>
              <button onClick={() => setShowInvite(true)} className="flex items-center text-slate-500 hover:text-retro-primary" title="Invite / Join">
                 <span className="material-symbols-outlined text-xl">qr_code_2</span>
              </button>
@@ -1498,13 +1508,19 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit }) => {
         {team.members.map(member => {
           const isFinished = session.finishedUsers?.includes(member.id);
           const isCurrentUser = member.id === currentUser.id;
+          const isOnline = connectedUsers.has(member.id);
           return (
             <div
               key={member.id}
               className={`flex items-center p-2 rounded-lg mb-1 ${isCurrentUser ? 'bg-indigo-50' : 'hover:bg-slate-50'}`}
             >
-              <div className={`w-8 h-8 rounded-full ${member.color} text-white flex items-center justify-center text-xs font-bold mr-3`}>
-                {member.name.substring(0, 2).toUpperCase()}
+              <div className="relative mr-3">
+                <div className={`w-8 h-8 rounded-full ${member.color} text-white flex items-center justify-center text-xs font-bold`}>
+                  {member.name.substring(0, 2).toUpperCase()}
+                </div>
+                {isOnline && (
+                  <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 rounded-full border-2 border-white" title="Online" />
+                )}
               </div>
               <div className="flex-grow min-w-0">
                 <div className={`text-sm font-medium truncate ${isCurrentUser ? 'text-indigo-700' : 'text-slate-700'}`}>
@@ -1534,60 +1550,6 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit }) => {
     <div className="flex flex-col h-full bg-slate-50">
         {renderHeader()}
         {showInvite && <InviteModal team={team} activeSession={session} onClose={() => setShowInvite(false)} />}
-
-        {/* Sync Modal for participants */}
-        {showSyncModal && (
-          <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center backdrop-blur-sm">
-            <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-md w-full mx-4">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-lg font-bold text-slate-800 flex items-center">
-                  <span className="material-symbols-outlined mr-2 text-amber-600">sync</span>
-                  Sync with Facilitator
-                </h2>
-                <button onClick={() => { setShowSyncModal(false); setSyncLink(''); setSyncError(''); }} className="text-slate-400 hover:text-slate-600">
-                  <span className="material-symbols-outlined">close</span>
-                </button>
-              </div>
-
-              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
-                <p className="text-sm text-amber-800">
-                  <strong>How to sync:</strong> Ask the facilitator to click the QR code button and share the new invitation link. Paste it below to update your view.
-                </p>
-              </div>
-
-              {syncError && (
-                <div className="bg-red-50 text-red-600 p-3 rounded mb-4 text-sm">{syncError}</div>
-              )}
-
-              <div className="mb-4">
-                <label className="block text-sm font-bold text-slate-500 mb-1">Invitation Link</label>
-                <input
-                  type="text"
-                  value={syncLink}
-                  onChange={(e) => setSyncLink(e.target.value)}
-                  placeholder="Paste the invitation link here..."
-                  className="w-full border border-slate-300 rounded-lg p-3 bg-white text-slate-900 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-                />
-              </div>
-
-              <div className="flex gap-3">
-                <button
-                  onClick={() => { setShowSyncModal(false); setSyncLink(''); setSyncError(''); }}
-                  className="flex-1 bg-slate-100 text-slate-700 py-2 rounded-lg font-bold hover:bg-slate-200 transition"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleSync}
-                  disabled={!syncLink.trim()}
-                  className="flex-1 bg-amber-500 text-white py-2 rounded-lg font-bold hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed transition"
-                >
-                  Sync Now
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
 
         <div className="flex-grow flex overflow-hidden">
           <div id="phase-scroller" className="flex-grow overflow-y-auto overflow-x-hidden relative flex flex-col">
