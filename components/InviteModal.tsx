@@ -17,11 +17,15 @@ const InviteModal: React.FC<Props> = ({ team, activeSession, onClose, onLogout }
     password: string;
     session?: RetroSession;
     members: Team['members'];
+    globalActions: Team['globalActions'];
+    retrospectives: Team['retrospectives'];
   } = {
     id: team.id,
     name: team.name,
     password: team.passwordHash,
-    members: team.members
+    members: team.members,
+    globalActions: team.globalActions,
+    retrospectives: team.retrospectives,
   };
 
   // Include the active session if provided

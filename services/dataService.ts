@@ -137,6 +137,8 @@ export const dataService = {
       tickets: [],
       groups: [],
       actions: [],
+      openActionsSnapshot: [],
+      historyActionsSnapshot: [],
       happiness: {},
       roti: {},
       finishedUsers: []
@@ -221,7 +223,7 @@ export const dataService = {
   getHex,
 
   // Import a team from invitation data (for invited users)
-  importTeam: (inviteData: { id: string; name: string; password: string; session?: RetroSession; members?: User[] }): Team => {
+  importTeam: (inviteData: { id: string; name: string; password: string; session?: RetroSession; members?: User[]; globalActions?: ActionItem[]; retrospectives?: RetroSession[] }): Team => {
     const data = loadData();
 
     // Check if team already exists by ID
@@ -267,8 +269,8 @@ export const dataService = {
           { id: 'admin-' + Math.random().toString(36).substr(2, 5), name: 'Facilitator', color: USER_COLORS[0], role: 'facilitator' }
         ],
       customTemplates: [],
-      retrospectives: enrichedSession ? [enrichedSession] : [],
-      globalActions: []
+      retrospectives: inviteData.retrospectives ?? (enrichedSession ? [enrichedSession] : []),
+      globalActions: inviteData.globalActions ?? []
     };
     data.teams.push(newTeam);
     saveData(data);

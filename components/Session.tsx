@@ -15,6 +15,7 @@ interface Props {
 
 const PHASES = ['ICEBREAKER', 'WELCOME', 'OPEN_ACTIONS', 'BRAINSTORM', 'GROUP', 'VOTE', 'DISCUSS', 'REVIEW', 'CLOSE'];
 const EMOJIS = ['👍', '👎', '❤️', '🎉', '👏', '😄', '😮', '🤔', '😡', '😢'];
+const COLOR_POOL = ['bg-indigo-500', 'bg-emerald-500', 'bg-amber-500', 'bg-rose-500', 'bg-cyan-500', 'bg-fuchsia-500', 'bg-lime-500', 'bg-pink-500'];
 
 const ICEBREAKERS = [
     "What was the highlight of your week?",
@@ -47,6 +48,8 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
   const sessionRef = useRef(session);
   useEffect(() => { sessionRef.current = session; }, [session]);
 
+  const isFacilitator = currentUser.role === 'facilitator';
+
   const getParticipants = () => {
     if (sessionRef.current?.participants && sessionRef.current.participants.length > 0) {
       return sessionRef.current.participants;
@@ -57,6 +60,41 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
     }
 
     return team.members;
+  };
+
+  const buildActionContext = (action: ActionItem, teamData: Team) => {
+    if (action.contextText) return action.contextText;
+    if (!action.linkedTicketId) return '';
+
+    for (const r of teamData.retrospectives) {
+      const t = r.tickets.find(x => x.id === action.linkedTicketId);
+      if (t) {
+        return `Re: "${t.text.substring(0, 50)}${t.text.length > 50 ? '...' : ''}"`;
+      }
+      const g = r.groups.find(x => x.id === action.linkedTicketId);
+      if (g) {
+        return `Re: Group "${g.title}"`;
+      }
+    }
+
+    return '';
+  };
+
+  const upsertParticipantInSession = (userId: string, userName: string) => {
+    const roster = getParticipants();
+    if (roster.some(p => p.id === userId)) return;
+
+    const fallbackColor = COLOR_POOL[roster.length % COLOR_POOL.length];
+    const memberFromTeam = (dataService.getTeam(team.id) || team).members.find(m => m.id === userId || m.name === userName);
+
+    const member = memberFromTeam ?? { id: userId, name: userName, color: fallbackColor, role: 'participant' as const };
+
+    updateSession(s => {
+      if (!s.participants) s.participants = [];
+      if (!s.participants.some(p => p.id === member.id)) {
+        s.participants.push(member);
+      }
+    });
   };
 
   // Connect to sync service on mount
@@ -82,8 +120,9 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
     });
 
     // Listen for member events
-    const unsubJoin = syncService.onMemberJoined(({ userId }) => {
+    const unsubJoin = syncService.onMemberJoined(({ userId, userName }) => {
       setConnectedUsers(prev => new Set([...prev, userId]));
+      upsertParticipantInSession(userId, userName);
     });
 
     const unsubLeave = syncService.onMemberLeft(({ userId }) => {
@@ -142,6 +181,14 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
     setActiveDiscussTicket(session?.discussionFocusId ?? null);
   }, [session?.discussionFocusId]);
 
+  useEffect(() => {
+    if (!activeDiscussTicket) return;
+    const target = discussRefs.current[activeDiscussTicket];
+    if (target) {
+      setTimeout(() => target.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
+    }
+  }, [activeDiscussTicket]);
+
   const [showInvite, setShowInvite] = useState(false);
   const [draggedTicket, setDraggedTicket] = useState<Ticket | null>(null);
   
@@ -170,13 +217,13 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
   // Proposal State
   const [newProposalText, setNewProposalText] = useState('');
   const [activeDiscussTicket, setActiveDiscussTicket] = useState<string | null>(null);
+  const discussRefs = useRef<Record<string, HTMLDivElement | null>>({});
   
   // UI State
   const [isEditingColumns, setIsEditingColumns] = useState(false);
   const [isEditingTimer, setIsEditingTimer] = useState(false);
   const [timerEditMin, setTimerEditMin] = useState(5);
   const [timerEditSec, setTimerEditSec] = useState(0);
-  const [timerFinished, setTimerFinished] = useState(false);
   
   // Audio ref
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -239,39 +286,70 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
 
   // Initialize review actions when entering OPEN_ACTIONS phase
   useEffect(() => {
-      if (session?.phase === 'OPEN_ACTIONS' && reviewActionIds.length === 0) {
-          const currentTeam = dataService.getTeam(team.id) || team;
-          const prevRetros = currentTeam.retrospectives.filter(r => r.id !== sessionId);
-          const globalOpen = currentTeam.globalActions.filter(a => !a.done);
-          const retroOpen = prevRetros.flatMap(r => r.actions.filter(a => !a.done));
-          const allIds = [...globalOpen, ...retroOpen].map(a => a.id);
+      if (session?.phase !== 'OPEN_ACTIONS') return;
+
+      const currentTeam = dataService.getTeam(team.id) || team;
+      const prevRetros = currentTeam.retrospectives.filter(r => r.id !== sessionId);
+      const globalOpen = currentTeam.globalActions.filter(a => !a.done);
+      const retroOpen = prevRetros.flatMap(r => r.actions.filter(a => !a.done));
+
+      const snapshot = [...globalOpen, ...retroOpen].map(a => ({
+          ...a,
+          contextText: buildActionContext(a, currentTeam)
+      }));
+
+      const allIds = snapshot.map(a => a.id);
+
+      if (reviewActionIds.length === 0 && allIds.length > 0) {
           setReviewActionIds([...new Set(allIds)]);
       }
-  }, [session?.phase]);
+
+      if (isFacilitator) {
+          const existingIds = session.openActionsSnapshot?.map(a => a.id).join(',') ?? '';
+          const incomingIds = snapshot.map(a => a.id).join(',');
+
+          if (existingIds !== incomingIds) {
+              updateSession(s => { s.openActionsSnapshot = snapshot; });
+          }
+      } else if (!reviewActionIds.length && session.openActionsSnapshot?.length) {
+          setReviewActionIds(session.openActionsSnapshot.map(a => a.id));
+      }
+  }, [session?.phase, refreshTick, isFacilitator]);
 
   // Initialize history actions when entering REVIEW phase
   useEffect(() => {
-      if (session?.phase === 'REVIEW' && historyActionIds.length === 0) {
-          const currentTeam = dataService.getTeam(team.id) || team;
-          // Get all actions that are NOT created in this session
-          const newActionIds = sessionRef.current?.actions.map(a => a.id) || [];
-          
-          const allGlobal = currentTeam.globalActions;
-          const allRetroActions = currentTeam.retrospectives.filter(r => r.id !== sessionId).flatMap(r => r.actions);
-          
-          // We show all Unfinished actions from history
-          // PLUS we keep showing them even if marked done during this session (handled by using this stable list)
-          const relevantActions = [...allGlobal, ...allRetroActions].filter(a => !a.done && !newActionIds.includes(a.id));
-          
+      if (session?.phase !== 'REVIEW') return;
+
+      const currentTeam = dataService.getTeam(team.id) || team;
+      const newActionIds = sessionRef.current?.actions.map(a => a.id) || [];
+
+      const allGlobal = currentTeam.globalActions;
+      const allRetroActions = currentTeam.retrospectives.filter(r => r.id !== sessionId).flatMap(r => r.actions);
+
+      const relevantActions = [...allGlobal, ...allRetroActions]
+        .filter(a => !a.done && !newActionIds.includes(a.id))
+        .map(a => ({ ...a, contextText: buildActionContext(a, currentTeam) }));
+
+      if (historyActionIds.length === 0 && relevantActions.length > 0) {
           setHistoryActionIds(relevantActions.map(a => a.id));
       }
-  }, [session?.phase]);
+
+      if (isFacilitator) {
+          const currentSnapshot = session.historyActionsSnapshot?.map(a => a.id).join(',') ?? '';
+          const incomingSnapshot = relevantActions.map(a => a.id).join(',');
+
+          if (currentSnapshot !== incomingSnapshot) {
+              updateSession(s => { s.historyActionsSnapshot = relevantActions; });
+          }
+      } else if (!historyActionIds.length && session.historyActionsSnapshot?.length) {
+          setHistoryActionIds(session.historyActionsSnapshot.map(a => a.id));
+      }
+  }, [session?.phase, refreshTick, isFacilitator]);
 
   // Timer Effect
   useEffect(() => {
     let interval: any;
     if (session?.settings.timerRunning && session.settings.timerSeconds > 0) {
-      setTimerFinished(false);
       interval = setInterval(() => {
         updateSession(s => {
             if(s.settings.timerSeconds > 0) {
@@ -287,15 +365,13 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
             }
         });
       }, 1000);
-    } else if (session?.settings.timerSeconds === 0 && !session.settings.timerRunning) {
-        setTimerFinished(true);
     }
     return () => clearInterval(interval);
   }, [session?.settings.timerRunning, session?.settings.timerSeconds]);
 
   if (!session) return <div>Session not found</div>;
-  const isFacilitator = currentUser.role === 'facilitator';
   const participants = getParticipants();
+  const timerFinished = session.settings.timerSeconds === 0 && !session.settings.timerRunning;
 
   // --- Logic ---
   const handleExit = () => {
@@ -742,7 +818,7 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
                 ))}
             </div>
         </div>
-        <div onClick={() => setTimerFinished(false)} className="flex items-center bg-slate-100 rounded-lg px-3 py-1 mr-4 cursor-pointer hover:bg-slate-200 transition">
+        <div className="flex items-center bg-slate-100 rounded-lg px-3 py-1 mr-4 cursor-pointer hover:bg-slate-200 transition">
              {!isEditingTimer ? (
                  <>
                     <span className={`font-mono font-bold text-lg ${timerFinished ? 'text-red-500 animate-bounce' : session.settings.timerSeconds < 60 ? 'text-red-500' : 'text-slate-700'}`}>{formatTime(session.settings.timerSeconds)}</span>
@@ -911,11 +987,14 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
     // IMPORTANT: Fetch fresh team data to ensure done status updates trigger re-renders
     const currentTeam = dataService.getTeam(team.id) || team;
 
-    // Collect open actions once on mount to keep list stable even if done status changes
-    const actionsToShow = [
+    const fallbackActions = [
         ...currentTeam.globalActions.filter(a => reviewActionIds.includes(a.id)),
         ...currentTeam.retrospectives.flatMap(r => r.actions.filter(a => reviewActionIds.includes(a.id)))
-    ];
+    ].map(a => ({ ...a, contextText: buildActionContext(a, currentTeam) }));
+
+    const actionsToShow = session.openActionsSnapshot?.length
+        ? session.openActionsSnapshot
+        : fallbackActions;
     // Dedup by ID
     const uniqueActions = Array.from(new Map(actionsToShow.map(item => [item.id, item])).values());
 
@@ -944,7 +1023,7 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
                         return (
                         <div key={action.id} className={`p-4 border-b border-slate-100 last:border-0 flex items-center justify-between group hover:bg-slate-50 ${action.done ? 'bg-green-50/50' : ''}`}>
                             <div className="flex items-center flex-grow mr-4">
-                                <button onClick={() => { dataService.toggleGlobalAction(team.id, action.id); setRefreshTick(t => t + 1); }} className={`mr-3 transition ${action.done ? 'text-emerald-500 scale-110' : 'text-slate-300 hover:text-emerald-500'}`}>
+                                <button disabled={!isFacilitator} onClick={() => { if(!isFacilitator) return; dataService.toggleGlobalAction(team.id, action.id); setRefreshTick(t => t + 1); }} className={`mr-3 transition ${action.done ? 'text-emerald-500 scale-110' : 'text-slate-300 hover:text-emerald-500'} ${!isFacilitator ? 'opacity-50 cursor-not-allowed' : ''}`}>
                                     <span className="material-symbols-outlined text-2xl">{action.done ? 'check_circle' : 'radio_button_unchecked'}</span>
                                 </button>
                                 <div className="flex flex-col">
@@ -952,14 +1031,15 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
                                     {contextText && <span className="text-xs text-indigo-400 italic mt-0.5">{contextText}</span>}
                                 </div>
                             </div>
-                            <select 
+                            <select
                                 value={action.assigneeId || ''}
+                                disabled={!isFacilitator}
                                 onChange={(e) => {
                                     const updated = {...action, assigneeId: e.target.value || null};
                                     dataService.updateGlobalAction(team.id, updated);
                                     setRefreshTick(t => t + 1);
                                 }}
-                                className="text-xs border border-slate-200 rounded p-1 bg-white text-slate-900"
+                                className={`text-xs border border-slate-200 rounded p-1 bg-white text-slate-900 ${!isFacilitator ? 'opacity-50 cursor-not-allowed' : ''}`}
                             >
                                 <option value="">Unassigned</option>
                                {participants.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
@@ -1066,7 +1146,7 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
       return (
         <div className="flex flex-col h-full overflow-hidden">
             {renderPhaseActionBar()}
-            <div className="flex-grow overflow-x-auto bg-slate-50 p-6 flex space-x-6 items-start h-auto min-h-0">
+            <div className="flex-grow overflow-x-auto bg-slate-50 p-6 flex space-x-6 items-start h-auto min-h-0 justify-center">
                 {session.columns.map(col => {
                     let tickets = session.tickets.filter(t => t.colId === col.id && !t.groupId);
                     const groups = session.groups.filter(g => g.colId === col.id);
@@ -1288,7 +1368,7 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
                         : [];
 
                      return (
-                     <div key={item.id} className={`bg-white rounded-xl shadow-sm border-2 transition ${activeDiscussTicket === item.id ? 'border-retro-primary ring-4 ring-indigo-50' : 'border-slate-200'}`}>
+                     <div ref={(el) => { discussRefs.current[item.id] = el; }} key={item.id} className={`bg-white rounded-xl shadow-sm border-2 transition ${activeDiscussTicket === item.id ? 'border-retro-primary ring-4 ring-indigo-50' : 'border-slate-200'}`}>
                          <div
                            className={`p-4 flex items-start ${isFacilitator ? 'cursor-pointer' : 'cursor-default'}`}
                            onClick={() => {
@@ -1404,18 +1484,22 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
 
     const currentTeam = dataService.getTeam(team.id) || team;
 
-    // Use stable history list from state (historyActionIds) to allow checking/unchecking without disappearing
-    const allHistoryActions = [
-        ...currentTeam.globalActions,
-        ...currentTeam.retrospectives.filter(r => r.id !== session.id).flatMap(r => r.actions)
-    ];
-    
-    const uniquePrevActions = allHistoryActions.filter(a => historyActionIds.includes(a.id));
+    const historySource = session.historyActionsSnapshot?.length
+        ? session.historyActionsSnapshot
+        : [
+            ...currentTeam.globalActions.map(a => ({ ...a, contextText: buildActionContext(a, currentTeam) })),
+            ...currentTeam.retrospectives
+                .filter(r => r.id !== session.id)
+                .flatMap(r => r.actions.map(a => ({ ...a, contextText: buildActionContext(a, currentTeam) })))
+        ];
+
+    const uniquePrevActions = historySource.filter(a => historyActionIds.includes(a.id));
 
     const ActionRow: React.FC<{ action: ActionItem, isGlobal: boolean }> = ({ action, isGlobal }) => {
+        const canEdit = isFacilitator;
         // Find context if previous retro action
-        let contextText = "";
-        if (!isGlobal && action.originRetro) {
+        let contextText = action.contextText ?? "";
+        if (!contextText && !isGlobal && action.originRetro) {
             // Re-find the retro and ticket/group to build context
             // Optimization: could be passed in, but lookup is fast enough
              for (const r of currentTeam.retrospectives) {
@@ -1431,38 +1515,43 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
         return (
             <div className={`p-4 border-b border-slate-100 last:border-0 flex items-center justify-between group hover:bg-slate-50 transition ${action.done ? 'bg-green-50/50' : ''}`}>
                 <div className="flex items-center flex-grow mr-4">
-                    <button 
-                        onClick={() => { 
+                    <button
+                        disabled={!canEdit}
+                        onClick={() => {
+                            if(!canEdit) return;
                             if(isGlobal) dataService.toggleGlobalAction(team.id, action.id);
                             else updateSession(s => { const a = s.actions.find(x => x.id === action.id); if(a) a.done = !a.done; });
                             setRefreshTick(t => t + 1);
-                        }} 
-                        className={`mr-3 transition ${action.done ? 'text-emerald-500 scale-110' : 'text-slate-300 hover:text-emerald-500'}`}
+                        }}
+                        className={`mr-3 transition ${action.done ? 'text-emerald-500 scale-110' : 'text-slate-300 hover:text-emerald-500'} ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >
                         <span className="material-symbols-outlined text-2xl">{action.done ? 'check_circle' : 'radio_button_unchecked'}</span>
                     </button>
                     <div className="flex-grow flex flex-col">
                         <input
                             value={action.text}
+                            readOnly={!canEdit}
                             onChange={(e) => {
+                                if(!canEdit) return;
                                 if(isGlobal) dataService.updateGlobalAction(team.id, {...action, text: e.target.value});
                                 else updateSession(s => { const a = s.actions.find(x => x.id === action.id); if(a) a.text = e.target.value; });
                                 setRefreshTick(t => t+1);
                             }}
-                            className={`w-full bg-transparent border border-transparent hover:border-slate-300 rounded px-2 py-1 focus:bg-white focus:border-retro-primary outline-none transition font-medium ${action.done ? 'line-through text-slate-400' : 'text-slate-700'}`}
+                            className={`w-full bg-transparent border border-transparent hover:border-slate-300 rounded px-2 py-1 focus:bg-white focus:border-retro-primary outline-none transition font-medium ${action.done ? 'line-through text-slate-400' : 'text-slate-700'} ${!canEdit ? 'cursor-not-allowed' : ''}`}
                         />
                          {contextText && <span className="text-xs text-indigo-400 italic mt-0.5 px-2">{contextText}</span>}
                     </div>
                 </div>
                 <select
                     value={action.assigneeId || ''}
+                    disabled={!canEdit}
                     onChange={(e) => {
                         const val = e.target.value || null;
                         if(isGlobal) dataService.updateGlobalAction(team.id, {...action, assigneeId: val});
                         else updateSession(s => { const a = s.actions.find(x => x.id === action.id); if(a) a.assigneeId = val; });
                         setRefreshTick(t => t+1);
                     }}
-                    className="text-xs border border-slate-200 rounded p-1.5 bg-white text-slate-600 focus:border-retro-primary focus:ring-1 focus:ring-indigo-100 outline-none"
+                    className={`text-xs border border-slate-200 rounded p-1.5 bg-white text-slate-600 focus:border-retro-primary focus:ring-1 focus:ring-indigo-100 outline-none ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
                 >
                     <option value="">Unassigned</option>
                     {participants.map(m => (

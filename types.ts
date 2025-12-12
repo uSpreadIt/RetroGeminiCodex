@@ -44,6 +44,7 @@ export interface ActionItem {
   linkedTicketId?: string;
   proposalVotes: Record<string, 'up' | 'down' | 'neutral'>; // UserID -> Vote
   originRetro?: string;
+  contextText?: string;
 }
 
 export interface RetroSettings {
@@ -73,6 +74,8 @@ export interface RetroSession {
   tickets: Ticket[];
   groups: Group[];
   actions: ActionItem[];
+  openActionsSnapshot?: ActionItem[];
+  historyActionsSnapshot?: ActionItem[];
   happiness: Record<string, number>;
   roti: Record<string, number>;
   finishedUsers: string[]; // List of user IDs who clicked "I'm finished"
