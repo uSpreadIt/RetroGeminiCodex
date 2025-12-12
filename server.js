@@ -103,7 +103,8 @@ io.on('connection', (socket) => {
 });
 
 // Handle SPA routing - serve index.html for all non-API routes
-app.get('*', (req, res) => {
+// Use a regex catch-all compatible with Express 5's path-to-regexp
+app.get(/.*/, (req, res) => {
   res.sendFile(join(__dirname, 'dist', 'index.html'));
 });
 
