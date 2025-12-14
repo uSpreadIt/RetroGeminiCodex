@@ -95,15 +95,21 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const getParticipants = () => {
+    let roster: User[] = [];
+
     if (sessionRef.current?.participants && sessionRef.current.participants.length > 0) {
-      return sessionRef.current.participants;
+      roster = [...sessionRef.current.participants];
+    } else if (session?.participants && session.participants.length > 0) {
+      roster = [...session.participants];
+    } else {
+      roster = [...team.members];
     }
 
-    if (session?.participants && session.participants.length > 0) {
-      return session.participants;
+    if (!roster.some(p => p.id === currentUser.id)) {
+      roster.push(currentUser);
     }
 
-    return team.members;
+    return roster;
   };
 
   const buildActionContext = (action: ActionItem, teamData: Team) => {
@@ -524,6 +530,13 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
       setEditingTicketId(null);
       if(p==='CLOSE') s.status = 'CLOSED';
   });
+
+  const applyActionUpdate = (actionId: string, updater: (a: ActionItem) => void) => {
+      updateSession(s => {
+          const buckets = [s.actions, s.openActionsSnapshot, s.historyActionsSnapshot];
+          buckets.forEach(list => list?.forEach(a => { if (a.id === actionId) updater(a); }));
+      });
+  };
 
   const formatTime = (s: number) => {
       const m = Math.floor(s / 60);
@@ -988,7 +1001,8 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
       const myVote = session.happiness[currentUser.id];
       const votes = Object.values(session.happiness);
       const voterCount = Object.keys(session.happiness).length;
-      
+      const totalMembers = participants.length;
+
       const histogram = [1,2,3,4,5].map(rating => votes.filter(v => v === rating).length);
       const maxVal = Math.max(...histogram, 1);
 
@@ -1011,7 +1025,7 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
 
               {!session.settings.revealHappiness ? (
                    <div className="mb-8 text-center">
-                       <div className="text-lg font-bold text-slate-600 mb-2">{voterCount} votes cast</div>
+                       <div className="text-lg font-bold text-slate-600 mb-2">{voterCount} / {totalMembers} voted</div>
                        {isFacilitator && <button onClick={() => updateSession(s => s.settings.revealHappiness = true)} className="bg-indigo-600 text-white px-6 py-2 rounded-full font-bold shadow hover:bg-indigo-700">Reveal Results</button>}
                    </div>
               ) : (
@@ -1028,7 +1042,7 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
                               </div>
                           ))}
                       </div>
-                      <div className="text-center mt-4 text-slate-500 font-bold">{voterCount} participants voted</div>
+                      <div className="text-center mt-4 text-slate-500 font-bold">{voterCount} / {totalMembers} participants voted</div>
                   </div>
               )}
               {isFacilitator && (
@@ -1080,7 +1094,16 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
                         return (
                         <div key={action.id} className={`p-4 border-b border-slate-100 last:border-0 flex items-center justify-between group hover:bg-slate-50 ${action.done ? 'bg-green-50/50' : ''}`}>
                             <div className="flex items-center flex-grow mr-4">
-                                <button disabled={!isFacilitator} onClick={() => { if(!isFacilitator) return; dataService.toggleGlobalAction(team.id, action.id); setRefreshTick(t => t + 1); }} className={`mr-3 transition ${action.done ? 'text-emerald-500 scale-110' : 'text-slate-300 hover:text-emerald-500'} ${!isFacilitator ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                                <button
+                                    disabled={!isFacilitator}
+                                    onClick={() => {
+                                        if(!isFacilitator) return;
+                                        dataService.toggleGlobalAction(team.id, action.id);
+                                        applyActionUpdate(action.id, a => { a.done = !a.done; });
+                                        setRefreshTick(t => t + 1);
+                                    }}
+                                    className={`mr-3 transition ${action.done ? 'text-emerald-500 scale-110' : 'text-slate-300 hover:text-emerald-500'} ${!isFacilitator ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                >
                                     <span className="material-symbols-outlined text-2xl">{action.done ? 'check_circle' : 'radio_button_unchecked'}</span>
                                 </button>
                                 <div className="flex flex-col">
@@ -1094,6 +1117,7 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
                                 onChange={(e) => {
                                     const updated = {...action, assigneeId: e.target.value || null};
                                     dataService.updateGlobalAction(team.id, updated);
+                                    applyActionUpdate(action.id, a => { a.assigneeId = updated.assigneeId; });
                                     setRefreshTick(t => t + 1);
                                 }}
                                 className={`text-xs border border-slate-200 rounded p-1 bg-white text-slate-900 ${!isFacilitator ? 'opacity-50 cursor-not-allowed' : ''}`}
@@ -1577,7 +1601,7 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
                         onClick={() => {
                             if(!canEdit) return;
                             if(isGlobal) dataService.toggleGlobalAction(team.id, action.id);
-                            else updateSession(s => { const a = s.actions.find(x => x.id === action.id); if(a) a.done = !a.done; });
+                            applyActionUpdate(action.id, a => { a.done = !a.done; });
                             setRefreshTick(t => t + 1);
                         }}
                         className={`mr-3 transition ${action.done ? 'text-emerald-500 scale-110' : 'text-slate-300 hover:text-emerald-500'} ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
@@ -1591,7 +1615,7 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
                             onChange={(e) => {
                                 if(!canEdit) return;
                                 if(isGlobal) dataService.updateGlobalAction(team.id, {...action, text: e.target.value});
-                                else updateSession(s => { const a = s.actions.find(x => x.id === action.id); if(a) a.text = e.target.value; });
+                                applyActionUpdate(action.id, a => { a.text = e.target.value; });
                                 setRefreshTick(t => t+1);
                             }}
                             className={`w-full bg-transparent border border-transparent hover:border-slate-300 rounded px-2 py-1 focus:bg-white focus:border-retro-primary outline-none transition font-medium ${action.done ? 'line-through text-slate-400' : 'text-slate-700'} ${!canEdit ? 'cursor-not-allowed' : ''}`}
@@ -1605,7 +1629,7 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
                     onChange={(e) => {
                         const val = e.target.value || null;
                         if(isGlobal) dataService.updateGlobalAction(team.id, {...action, assigneeId: val});
-                        else updateSession(s => { const a = s.actions.find(x => x.id === action.id); if(a) a.assigneeId = val; });
+                        applyActionUpdate(action.id, a => { a.assigneeId = val; });
                         setRefreshTick(t => t+1);
                     }}
                     className={`text-xs border border-slate-200 rounded p-1.5 bg-white text-slate-600 focus:border-retro-primary focus:ring-1 focus:ring-indigo-100 outline-none ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
@@ -1617,7 +1641,10 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
                 </select>
                 {isFacilitator && !isGlobal && (
                     <button
-                        onClick={() => updateSession(s => s.actions = s.actions.filter(x => x.id !== action.id))}
+                        onClick={() => {
+                            if (!window.confirm('Delete this action item?')) return;
+                            updateSession(s => s.actions = s.actions.filter(x => x.id !== action.id));
+                        }}
                         className="ml-3 text-slate-300 hover:text-red-500"
                     >
                         <span className="material-symbols-outlined">delete</span>
@@ -1677,6 +1704,7 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
       const myRoti = session.roti[currentUser.id];
       const votes: number[] = Object.values(session.roti);
       const voterCount = Object.keys(session.roti).length;
+      const totalMembers = participants.length;
       const average = votes.length ? (votes.reduce((a, b)=>a+b, 0)/votes.length).toFixed(1) : '-';
       const histogram = [1,2,3,4,5].map(v => votes.filter(x => x === v).length);
       const maxVal = Math.max(...histogram, 1);
@@ -1696,7 +1724,7 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
 
                 {!session.settings.revealRoti ? (
                      <div className="mb-4">
-                        <div className="text-slate-400 font-bold mb-4">{voterCount} members have voted</div>
+                        <div className="text-slate-400 font-bold mb-4">{voterCount} / {totalMembers} members have voted</div>
                         {isFacilitator && <button onClick={() => updateSession(s => s.settings.revealRoti = true)} className="text-indigo-400 hover:text-white font-bold underline">Reveal Results</button>}
                      </div>
                 ) : (
@@ -1740,6 +1768,9 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
           const isFinished = session.finishedUsers?.includes(member.id);
           const isCurrentUser = member.id === currentUser.id;
           const isOnline = connectedUsers.has(member.id);
+          const hasHappinessVote = Boolean(session.happiness?.[member.id]);
+          const hasRotiVote = Boolean(session.roti?.[member.id]);
+          const hasStageVote = session.phase === 'WELCOME' ? hasHappinessVote : session.phase === 'CLOSE' ? hasRotiVote : false;
           return (
             <div
               key={member.id}
@@ -1760,8 +1791,11 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
                 </div>
                 <div className="text-xs text-slate-400 capitalize">{member.role}</div>
               </div>
-              {isFinished && (
-                <span className="material-symbols-outlined text-emerald-500 text-lg" title="Finished">
+              {(isFinished || hasStageVote) && (
+                <span
+                  className={`material-symbols-outlined text-lg ${hasStageVote ? 'text-emerald-500' : 'text-emerald-400'}`}
+                  title={hasStageVote ? 'Vote recorded' : 'Finished'}
+                >
                   check_circle
                 </span>
               )}
@@ -1770,9 +1804,19 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
         })}
       </div>
       <div className="p-3 border-t border-slate-200 bg-slate-50">
-        <div className="text-xs text-slate-500 text-center">
-          {session.finishedUsers?.length || 0} / {participants.length} finished
-        </div>
+        {session.phase === 'WELCOME' ? (
+          <div className="text-xs text-slate-500 text-center">
+            {Object.keys(session.happiness || {}).length} / {participants.length} submitted happiness
+          </div>
+        ) : session.phase === 'CLOSE' ? (
+          <div className="text-xs text-slate-500 text-center">
+            {Object.keys(session.roti || {}).length} / {participants.length} voted in close-out
+          </div>
+        ) : (
+          <div className="text-xs text-slate-500 text-center">
+            {session.finishedUsers?.length || 0} / {participants.length} finished
+          </div>
+        )}
       </div>
     </div>
   );
