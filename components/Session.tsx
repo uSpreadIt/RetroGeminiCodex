@@ -15,6 +15,7 @@ interface Props {
 
 const PHASES = ['ICEBREAKER', 'WELCOME', 'OPEN_ACTIONS', 'BRAINSTORM', 'GROUP', 'VOTE', 'DISCUSS', 'REVIEW', 'CLOSE'];
 const EMOJIS = ['👍', '👎', '❤️', '🎉', '👏', '😄', '😮', '🤔', '😡', '😢'];
+const COLOR_POOL = ['bg-indigo-500', 'bg-emerald-500', 'bg-amber-500', 'bg-rose-500', 'bg-cyan-500', 'bg-fuchsia-500', 'bg-lime-500', 'bg-pink-500'];
 
 const ICEBREAKERS = [
     "What was the highlight of your week?",
@@ -42,63 +43,21 @@ const ICEBREAKERS = [
 const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeamUpdate }) => {
   const [session, setSession] = useState<RetroSession | undefined>(team.retrospectives.find(r => r.id === sessionId));
   const [connectedUsers, setConnectedUsers] = useState<Set<string>>(new Set([currentUser.id]));
+  const presenceBroadcasted = useRef(false);
+
+  useEffect(() => {
+    presenceBroadcasted.current = false;
+  }, [sessionId]);
 
   // Use a Ref to hold the latest session state to prevent Timer/Interaction race conditions
   const sessionRef = useRef(session);
   useEffect(() => { sessionRef.current = session; }, [session]);
 
-  // Connect to sync service on mount
-  useEffect(() => {
-    let isMounted = true;
-
-    (async () => {
-      try {
-        await syncService.connect();
-        if (isMounted) {
-          syncService.joinSession(sessionId, currentUser.id, currentUser.name);
-        }
-      } catch (e) {
-        console.error('[Session] Failed to connect to sync service', e);
-      }
-    })();
-
-    // Listen for session updates from other clients
-    const unsubUpdate = syncService.onSessionUpdate((updatedSession) => {
-      setSession(updatedSession);
-      // Also save to localStorage
-      dataService.updateSession(team.id, updatedSession);
-    });
-
-    // Listen for member events
-    const unsubJoin = syncService.onMemberJoined(({ userId }) => {
-      setConnectedUsers(prev => new Set([...prev, userId]));
-    });
-
-    const unsubLeave = syncService.onMemberLeft(({ userId }) => {
-      setConnectedUsers(prev => {
-        const next = new Set(prev);
-        next.delete(userId);
-        return next;
-      });
-    });
-
-    // Send initial session state (facilitator sends their version)
-    if (currentUser.role === 'facilitator' && session) {
-      setTimeout(() => syncService.updateSession(session), 500);
-    }
-
-    return () => {
-      unsubUpdate();
-      unsubJoin();
-      unsubLeave();
-      syncService.leaveSession();
-      isMounted = false;
-    };
-  }, [sessionId, currentUser.id, currentUser.name, currentUser.role, team.id]);
+  const isFacilitator = currentUser.role === 'facilitator';
 
   const [showInvite, setShowInvite] = useState(false);
   const [draggedTicket, setDraggedTicket] = useState<Ticket | null>(null);
-  
+
   // Drag Target State for explicit visual cues
   const [dragTarget, setDragTarget] = useState<{ type: 'COLUMN' | 'ITEM', id: string } | null>(null);
 
@@ -124,27 +83,234 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
   // Proposal State
   const [newProposalText, setNewProposalText] = useState('');
   const [activeDiscussTicket, setActiveDiscussTicket] = useState<string | null>(null);
-  
+  const discussRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
   // UI State
   const [isEditingColumns, setIsEditingColumns] = useState(false);
   const [isEditingTimer, setIsEditingTimer] = useState(false);
   const [timerEditMin, setTimerEditMin] = useState(5);
   const [timerEditSec, setTimerEditSec] = useState(0);
-  const [timerFinished, setTimerFinished] = useState(false);
-  
+
   // Audio ref
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  // Force update wrapper using Ref for reliability
-  const updateSession = (updater: (s: RetroSession) => void) => {
-    if(!sessionRef.current) return;
-    const newSession = JSON.parse(JSON.stringify(sessionRef.current));
+  const getParticipants = () => {
+    if (sessionRef.current?.participants && sessionRef.current.participants.length > 0) {
+      return sessionRef.current.participants;
+    }
+
+    if (session?.participants && session.participants.length > 0) {
+      return session.participants;
+    }
+
+    return team.members;
+  };
+
+  const buildActionContext = (action: ActionItem, teamData: Team) => {
+    if (action.contextText) return action.contextText;
+    if (!action.linkedTicketId) return '';
+
+    for (const r of teamData.retrospectives) {
+      const t = r.tickets.find(x => x.id === action.linkedTicketId);
+      if (t) {
+        return `Re: "${t.text.substring(0, 50)}${t.text.length > 50 ? '...' : ''}"`;
+      }
+      const g = r.groups.find(x => x.id === action.linkedTicketId);
+      if (g) {
+        return `Re: Group "${g.title}"`;
+      }
+    }
+
+    return '';
+  };
+
+  const upsertParticipantInSession = (userId: string, userName: string) => {
+    const roster = getParticipants();
+    if (roster.some(p => p.id === userId)) return;
+
+    const fallbackColor = COLOR_POOL[roster.length % COLOR_POOL.length];
+    const memberFromTeam = (dataService.getTeam(team.id) || team).members.find(m => m.id === userId || m.name === userName);
+
+    const member = memberFromTeam ?? { id: userId, name: userName, color: fallbackColor, role: 'participant' as const };
+
+    updateSession(s => {
+      if (!s.participants) s.participants = [];
+      if (!s.participants.some(p => p.id === member.id)) {
+        s.participants.push(member);
+      }
+    });
+  };
+
+  const mergeRoster = (roster: { id: string; name: string }[]) => {
+    const existing = sessionRef.current?.participants ?? [];
+    const updated = [...existing];
+    let nextColorIndex = existing.length;
+
+    roster.forEach((entry) => {
+      const already = updated.find(p => p.id === entry.id || p.name === entry.name);
+      if (already) {
+        already.id = entry.id;
+        already.name = entry.name;
+        return;
+      }
+
+      const teamMember = (dataService.getTeam(team.id) || team).members.find(m => m.id === entry.id || m.name === entry.name);
+      const color = teamMember?.color || COLOR_POOL[nextColorIndex % COLOR_POOL.length];
+      nextColorIndex++;
+
+      updated.push({
+        id: entry.id,
+        name: entry.name,
+        color,
+        role: teamMember?.role || 'participant'
+      });
+    });
+
+    updateSession(s => { s.participants = updated; });
+  };
+
+  // Connect to sync service on mount
+  useEffect(() => {
+    let isMounted = true;
+
+    (async () => {
+      try {
+        await syncService.connect();
+        if (isMounted) {
+          syncService.joinSession(sessionId, currentUser.id, currentUser.name);
+        }
+      } catch (e) {
+        console.error('[Session] Failed to connect to sync service', e);
+      }
+    })();
+
+    // Listen for session updates from other clients
+    const unsubUpdate = syncService.onSessionUpdate((updatedSession) => {
+      setSession(updatedSession);
+      // Also save to localStorage
+      dataService.updateSession(team.id, updatedSession);
+    });
+
+    // Listen for member events
+    const unsubJoin = syncService.onMemberJoined(({ userId, userName }) => {
+      setConnectedUsers(prev => new Set([...prev, userId]));
+      upsertParticipantInSession(userId, userName);
+    });
+
+    const unsubLeave = syncService.onMemberLeft(({ userId }) => {
+      setConnectedUsers(prev => {
+        const next = new Set(prev);
+        next.delete(userId);
+        return next;
+      });
+    });
+
+    const unsubRoster = syncService.onRoster((roster) => {
+      setConnectedUsers(new Set(roster.map(r => r.id)));
+      mergeRoster(roster);
+    });
+
+    // Send initial session state (facilitator sends their version)
+    if (currentUser.role === 'facilitator' && session) {
+      setTimeout(() => syncService.updateSession(session), 500);
+    }
+
+    return () => {
+      unsubUpdate();
+      unsubJoin();
+      unsubLeave();
+      unsubRoster();
+      syncService.leaveSession();
+      isMounted = false;
+    };
+  }, [sessionId, currentUser.id, currentUser.name, currentUser.role, team.id]);
+
+  // Ensure the shared roster includes this user (and any known teammates) for cross-client visibility
+  useEffect(() => {
+    if (!session) return;
+
+    const roster = getParticipants();
+    const hasCurrentUser = roster.some(p => p.id === currentUser.id);
+    const missingTeammates = team.members.filter(m => !roster.some(p => p.id === m.id));
+
+    if (!hasCurrentUser || missingTeammates.length > 0 || !session.participants?.length) {
+      updateSession(s => {
+        const existing = s.participants ?? [];
+        const merged = [...existing];
+
+        if (!existing.some(p => p.id === currentUser.id)) {
+          merged.push(currentUser);
+        }
+
+        team.members.forEach(m => {
+          if (!merged.some(p => p.id === m.id)) {
+            merged.push(m);
+          }
+        });
+
+        s.participants = merged;
+      });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.id]);
+
+  // Follow facilitator-selected discussion focus
+  useEffect(() => {
+    setActiveDiscussTicket(session?.discussionFocusId ?? null);
+  }, [session?.discussionFocusId]);
+
+  useEffect(() => {
+    if (!activeDiscussTicket) return;
+    const target = discussRefs.current[activeDiscussTicket];
+    if (target) {
+      setTimeout(() => target.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
+    }
+  }, [activeDiscussTicket]);
+
+    // Force update wrapper using Ref for reliability
+    const updateSession = (updater: (s: RetroSession) => void) => {
+    const baseSession = sessionRef.current
+      ?? dataService.getTeam(team.id)?.retrospectives.find(r => r.id === sessionId)
+      ?? null;
+
+    if(!baseSession) return;
+
+    const newSession = JSON.parse(JSON.stringify(baseSession));
+    if (!newSession.participants) newSession.participants = [];
+
+    const existingIds = new Set(newSession.participants.map(p => p.id));
+    const baselineMembers = getParticipants();
+    baselineMembers.forEach(m => {
+      if (!existingIds.has(m.id)) {
+        newSession.participants!.push(m);
+        existingIds.add(m.id);
+      }
+    });
+    if (!existingIds.has(currentUser.id)) {
+      newSession.participants!.push(currentUser);
+      existingIds.add(currentUser.id);
+    }
+
     updater(newSession);
     dataService.updateSession(team.id, newSession);
     setSession(newSession);
     // Sync to other clients via WebSocket
     syncService.updateSession(newSession);
   };
+
+  // Ensure each client broadcasts their presence once so the facilitator sees them immediately
+  useEffect(() => {
+    if (!session || presenceBroadcasted.current) return;
+    presenceBroadcasted.current = true;
+
+    updateSession((s) => {
+      if (!s.participants) s.participants = [];
+      if (!s.participants.some((p) => p.id === currentUser.id)) {
+        s.participants.push(currentUser);
+      }
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.id, currentUser.id]);
 
   // Calculate votes left in render scope for Auto-Finish Logic
   const myTicketVotes = session ? session.tickets.reduce((acc, t) => acc + t.votes.filter(v => v === currentUser.id).length, 0) : 0;
@@ -178,39 +344,70 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
 
   // Initialize review actions when entering OPEN_ACTIONS phase
   useEffect(() => {
-      if (session?.phase === 'OPEN_ACTIONS' && reviewActionIds.length === 0) {
-          const currentTeam = dataService.getTeam(team.id) || team;
-          const prevRetros = currentTeam.retrospectives.filter(r => r.id !== sessionId);
-          const globalOpen = currentTeam.globalActions.filter(a => !a.done);
-          const retroOpen = prevRetros.flatMap(r => r.actions.filter(a => !a.done));
-          const allIds = [...globalOpen, ...retroOpen].map(a => a.id);
+      if (session?.phase !== 'OPEN_ACTIONS') return;
+
+      const currentTeam = dataService.getTeam(team.id) || team;
+      const prevRetros = currentTeam.retrospectives.filter(r => r.id !== sessionId);
+      const globalOpen = currentTeam.globalActions.filter(a => !a.done);
+      const retroOpen = prevRetros.flatMap(r => r.actions.filter(a => !a.done));
+
+      const snapshot = [...globalOpen, ...retroOpen].map(a => ({
+          ...a,
+          contextText: buildActionContext(a, currentTeam)
+      }));
+
+      const allIds = snapshot.map(a => a.id);
+
+      if (reviewActionIds.length === 0 && allIds.length > 0) {
           setReviewActionIds([...new Set(allIds)]);
       }
-  }, [session?.phase]);
+
+      if (isFacilitator) {
+          const existingIds = session.openActionsSnapshot?.map(a => a.id).join(',') ?? '';
+          const incomingIds = snapshot.map(a => a.id).join(',');
+
+          if (existingIds !== incomingIds) {
+              updateSession(s => { s.openActionsSnapshot = snapshot; });
+          }
+      } else if (!reviewActionIds.length && session.openActionsSnapshot?.length) {
+          setReviewActionIds(session.openActionsSnapshot.map(a => a.id));
+      }
+  }, [session?.phase, refreshTick, isFacilitator]);
 
   // Initialize history actions when entering REVIEW phase
   useEffect(() => {
-      if (session?.phase === 'REVIEW' && historyActionIds.length === 0) {
-          const currentTeam = dataService.getTeam(team.id) || team;
-          // Get all actions that are NOT created in this session
-          const newActionIds = sessionRef.current?.actions.map(a => a.id) || [];
-          
-          const allGlobal = currentTeam.globalActions;
-          const allRetroActions = currentTeam.retrospectives.filter(r => r.id !== sessionId).flatMap(r => r.actions);
-          
-          // We show all Unfinished actions from history
-          // PLUS we keep showing them even if marked done during this session (handled by using this stable list)
-          const relevantActions = [...allGlobal, ...allRetroActions].filter(a => !a.done && !newActionIds.includes(a.id));
-          
+      if (session?.phase !== 'REVIEW') return;
+
+      const currentTeam = dataService.getTeam(team.id) || team;
+      const newActionIds = sessionRef.current?.actions.map(a => a.id) || [];
+
+      const allGlobal = currentTeam.globalActions;
+      const allRetroActions = currentTeam.retrospectives.filter(r => r.id !== sessionId).flatMap(r => r.actions);
+
+      const relevantActions = [...allGlobal, ...allRetroActions]
+        .filter(a => !a.done && !newActionIds.includes(a.id))
+        .map(a => ({ ...a, contextText: buildActionContext(a, currentTeam) }));
+
+      if (historyActionIds.length === 0 && relevantActions.length > 0) {
           setHistoryActionIds(relevantActions.map(a => a.id));
       }
-  }, [session?.phase]);
+
+      if (isFacilitator) {
+          const currentSnapshot = session.historyActionsSnapshot?.map(a => a.id).join(',') ?? '';
+          const incomingSnapshot = relevantActions.map(a => a.id).join(',');
+
+          if (currentSnapshot !== incomingSnapshot) {
+              updateSession(s => { s.historyActionsSnapshot = relevantActions; });
+          }
+      } else if (!historyActionIds.length && session.historyActionsSnapshot?.length) {
+          setHistoryActionIds(session.historyActionsSnapshot.map(a => a.id));
+      }
+  }, [session?.phase, refreshTick, isFacilitator]);
 
   // Timer Effect
   useEffect(() => {
     let interval: any;
     if (session?.settings.timerRunning && session.settings.timerSeconds > 0) {
-      setTimerFinished(false);
       interval = setInterval(() => {
         updateSession(s => {
             if(s.settings.timerSeconds > 0) {
@@ -226,14 +423,13 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
             }
         });
       }, 1000);
-    } else if (session?.settings.timerSeconds === 0 && !session.settings.timerRunning) {
-        setTimerFinished(true);
     }
     return () => clearInterval(interval);
   }, [session?.settings.timerRunning, session?.settings.timerSeconds]);
 
   if (!session) return <div>Session not found</div>;
-  const isFacilitator = currentUser.role === 'facilitator';
+  const participants = getParticipants();
+  const timerFinished = session.settings.timerSeconds === 0 && !session.settings.timerRunning;
 
   // --- Logic ---
   const handleExit = () => {
@@ -279,7 +475,7 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
           s.settings.maxVotes = newMax;
           
           // Cleanup excess votes for ALL members
-          team.members.forEach(member => {
+          participants.forEach(member => {
               let memberVotes = 0;
               // Count current total votes
               s.tickets.forEach(t => memberVotes += t.votes.filter(v => v === member.id).length);
@@ -322,7 +518,6 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
       s.phase = p;
       s.settings.timerRunning = false;
       s.settings.timerSeconds = s.settings.timerInitial || 300;
-      setTimerFinished(false);
       s.finishedUsers = [];
       setIsEditingColumns(false);
       setIsEditingTimer(false);
@@ -511,7 +706,7 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
 
   const renderTicketCard = (t: Ticket, mode: 'BRAINSTORM'|'GROUP'|'VOTE', canVote: boolean, myVotesOnThis: number, isGrouped: boolean = false) => {
       const isMine = t.authorId === currentUser.id;
-      const author = team.members.find(m => m.id === t.authorId);
+      const author = participants.find(m => m.id === t.authorId);
       const showContent = isMine || session.settings.revealBrainstorm; 
       const visible = (mode === 'GROUP' || mode === 'VOTE') ? true : showContent;
       const isPickerOpen = emojiPickerOpenId === t.id;
@@ -680,7 +875,7 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
                 ))}
             </div>
         </div>
-        <div onClick={() => setTimerFinished(false)} className="flex items-center bg-slate-100 rounded-lg px-3 py-1 mr-4 cursor-pointer hover:bg-slate-200 transition">
+        <div className="flex items-center bg-slate-100 rounded-lg px-3 py-1 mr-4 cursor-pointer hover:bg-slate-200 transition">
              {!isEditingTimer ? (
                  <>
                     <span className={`font-mono font-bold text-lg ${timerFinished ? 'text-red-500 animate-bounce' : session.settings.timerSeconds < 60 ? 'text-red-500' : 'text-slate-700'}`}>{formatTime(session.settings.timerSeconds)}</span>
@@ -833,7 +1028,7 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
                               </div>
                           ))}
                       </div>
-                      <div className="text-center mt-4 text-slate-500 font-bold">{voterCount} team members voted</div>
+                      <div className="text-center mt-4 text-slate-500 font-bold">{voterCount} participants voted</div>
                   </div>
               )}
               {isFacilitator && (
@@ -849,11 +1044,14 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
     // IMPORTANT: Fetch fresh team data to ensure done status updates trigger re-renders
     const currentTeam = dataService.getTeam(team.id) || team;
 
-    // Collect open actions once on mount to keep list stable even if done status changes
-    const actionsToShow = [
+    const fallbackActions = [
         ...currentTeam.globalActions.filter(a => reviewActionIds.includes(a.id)),
         ...currentTeam.retrospectives.flatMap(r => r.actions.filter(a => reviewActionIds.includes(a.id)))
-    ];
+    ].map(a => ({ ...a, contextText: buildActionContext(a, currentTeam) }));
+
+    const actionsToShow = session.openActionsSnapshot?.length
+        ? session.openActionsSnapshot
+        : fallbackActions;
     // Dedup by ID
     const uniqueActions = Array.from(new Map(actionsToShow.map(item => [item.id, item])).values());
 
@@ -882,7 +1080,7 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
                         return (
                         <div key={action.id} className={`p-4 border-b border-slate-100 last:border-0 flex items-center justify-between group hover:bg-slate-50 ${action.done ? 'bg-green-50/50' : ''}`}>
                             <div className="flex items-center flex-grow mr-4">
-                                <button onClick={() => { dataService.toggleGlobalAction(team.id, action.id); setRefreshTick(t => t + 1); }} className={`mr-3 transition ${action.done ? 'text-emerald-500 scale-110' : 'text-slate-300 hover:text-emerald-500'}`}>
+                                <button disabled={!isFacilitator} onClick={() => { if(!isFacilitator) return; dataService.toggleGlobalAction(team.id, action.id); setRefreshTick(t => t + 1); }} className={`mr-3 transition ${action.done ? 'text-emerald-500 scale-110' : 'text-slate-300 hover:text-emerald-500'} ${!isFacilitator ? 'opacity-50 cursor-not-allowed' : ''}`}>
                                     <span className="material-symbols-outlined text-2xl">{action.done ? 'check_circle' : 'radio_button_unchecked'}</span>
                                 </button>
                                 <div className="flex flex-col">
@@ -890,17 +1088,18 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
                                     {contextText && <span className="text-xs text-indigo-400 italic mt-0.5">{contextText}</span>}
                                 </div>
                             </div>
-                            <select 
+                            <select
                                 value={action.assigneeId || ''}
+                                disabled={!isFacilitator}
                                 onChange={(e) => {
                                     const updated = {...action, assigneeId: e.target.value || null};
                                     dataService.updateGlobalAction(team.id, updated);
                                     setRefreshTick(t => t + 1);
                                 }}
-                                className="text-xs border border-slate-200 rounded p-1 bg-white text-slate-900"
+                                className={`text-xs border border-slate-200 rounded p-1 bg-white text-slate-900 ${!isFacilitator ? 'opacity-50 cursor-not-allowed' : ''}`}
                             >
                                 <option value="">Unassigned</option>
-                                {team.members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                               {participants.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                             </select>
                         </div>
                     )})}
@@ -912,7 +1111,7 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
 
   const renderColumns = (mode: 'BRAINSTORM'|'GROUP'|'VOTE') => {
       const finishedCount = session.finishedUsers?.length || 0;
-      const totalMembers = team.members.length;
+      const totalMembers = participants.length;
       const isFinished = session.finishedUsers?.includes(currentUser.id);
 
       const renderPhaseActionBar = () => (
@@ -1004,7 +1203,7 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
       return (
         <div className="flex flex-col h-full overflow-hidden">
             {renderPhaseActionBar()}
-            <div className="flex-grow overflow-x-auto bg-slate-50 p-6 flex space-x-6 items-start h-auto min-h-0">
+            <div className="flex-grow overflow-x-auto bg-slate-50 p-6 flex space-x-6 items-start h-auto min-h-0 justify-center">
                 {session.columns.map(col => {
                     let tickets = session.tickets.filter(t => t.colId === col.id && !t.groupId);
                     const groups = session.groups.filter(g => g.colId === col.id);
@@ -1162,7 +1361,7 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
                                         <div key={authorId} className="mb-4 bg-slate-100/50 p-2 rounded-lg border border-slate-200/50">
                                             <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 pl-1 flex items-center">
                                                 <span className="w-2 h-2 rounded-full bg-slate-300 mr-2"></span>
-                                                {team.members.find(m => m.id === authorId)?.name || 'Unknown'}
+                                               {participants.find(m => m.id === authorId)?.name || 'Unknown'}
                                             </div>
                                             {authorTickets.map(t => {
                                                 const myVotesOnThis = t.votes.filter(v => v === currentUser.id).length;
@@ -1226,8 +1425,16 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
                         : [];
 
                      return (
-                     <div key={item.id} className={`bg-white rounded-xl shadow-sm border-2 transition ${activeDiscussTicket === item.id ? 'border-retro-primary ring-4 ring-indigo-50' : 'border-slate-200'}`}>
-                         <div className="p-4 flex items-start cursor-pointer" onClick={() => setActiveDiscussTicket(activeDiscussTicket === item.id ? null : item.id)}>
+                     <div ref={(el) => { discussRefs.current[item.id] = el; }} key={item.id} className={`bg-white rounded-xl shadow-sm border-2 transition ${activeDiscussTicket === item.id ? 'border-retro-primary ring-4 ring-indigo-50' : 'border-slate-200'}`}>
+                         <div
+                           className={`p-4 flex items-start ${isFacilitator ? 'cursor-pointer' : 'cursor-default'}`}
+                           onClick={() => {
+                             if (!isFacilitator) return;
+                             updateSession(s => {
+                               s.discussionFocusId = s.discussionFocusId === item.id ? null : item.id;
+                             });
+                           }}
+                         >
                              <div className="bg-slate-800 text-white font-bold w-8 h-8 rounded flex items-center justify-center mr-4 shrink-0">{index + 1}</div>
                              <div className="flex-grow">
                                  <div className="text-lg text-slate-800 font-medium mb-1">{item.text}</div>
@@ -1334,18 +1541,22 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
 
     const currentTeam = dataService.getTeam(team.id) || team;
 
-    // Use stable history list from state (historyActionIds) to allow checking/unchecking without disappearing
-    const allHistoryActions = [
-        ...currentTeam.globalActions,
-        ...currentTeam.retrospectives.filter(r => r.id !== session.id).flatMap(r => r.actions)
-    ];
-    
-    const uniquePrevActions = allHistoryActions.filter(a => historyActionIds.includes(a.id));
+    const historySource = session.historyActionsSnapshot?.length
+        ? session.historyActionsSnapshot
+        : [
+            ...currentTeam.globalActions.map(a => ({ ...a, contextText: buildActionContext(a, currentTeam) })),
+            ...currentTeam.retrospectives
+                .filter(r => r.id !== session.id)
+                .flatMap(r => r.actions.map(a => ({ ...a, contextText: buildActionContext(a, currentTeam) })))
+        ];
+
+    const uniquePrevActions = historySource.filter(a => historyActionIds.includes(a.id));
 
     const ActionRow: React.FC<{ action: ActionItem, isGlobal: boolean }> = ({ action, isGlobal }) => {
+        const canEdit = isFacilitator;
         // Find context if previous retro action
-        let contextText = "";
-        if (!isGlobal && action.originRetro) {
+        let contextText = action.contextText ?? "";
+        if (!contextText && !isGlobal && action.originRetro) {
             // Re-find the retro and ticket/group to build context
             // Optimization: could be passed in, but lookup is fast enough
              for (const r of currentTeam.retrospectives) {
@@ -1361,41 +1572,46 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
         return (
             <div className={`p-4 border-b border-slate-100 last:border-0 flex items-center justify-between group hover:bg-slate-50 transition ${action.done ? 'bg-green-50/50' : ''}`}>
                 <div className="flex items-center flex-grow mr-4">
-                    <button 
-                        onClick={() => { 
+                    <button
+                        disabled={!canEdit}
+                        onClick={() => {
+                            if(!canEdit) return;
                             if(isGlobal) dataService.toggleGlobalAction(team.id, action.id);
                             else updateSession(s => { const a = s.actions.find(x => x.id === action.id); if(a) a.done = !a.done; });
                             setRefreshTick(t => t + 1);
-                        }} 
-                        className={`mr-3 transition ${action.done ? 'text-emerald-500 scale-110' : 'text-slate-300 hover:text-emerald-500'}`}
+                        }}
+                        className={`mr-3 transition ${action.done ? 'text-emerald-500 scale-110' : 'text-slate-300 hover:text-emerald-500'} ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >
                         <span className="material-symbols-outlined text-2xl">{action.done ? 'check_circle' : 'radio_button_unchecked'}</span>
                     </button>
                     <div className="flex-grow flex flex-col">
                         <input
                             value={action.text}
+                            readOnly={!canEdit}
                             onChange={(e) => {
+                                if(!canEdit) return;
                                 if(isGlobal) dataService.updateGlobalAction(team.id, {...action, text: e.target.value});
                                 else updateSession(s => { const a = s.actions.find(x => x.id === action.id); if(a) a.text = e.target.value; });
                                 setRefreshTick(t => t+1);
                             }}
-                            className={`w-full bg-transparent border border-transparent hover:border-slate-300 rounded px-2 py-1 focus:bg-white focus:border-retro-primary outline-none transition font-medium ${action.done ? 'line-through text-slate-400' : 'text-slate-700'}`}
+                            className={`w-full bg-transparent border border-transparent hover:border-slate-300 rounded px-2 py-1 focus:bg-white focus:border-retro-primary outline-none transition font-medium ${action.done ? 'line-through text-slate-400' : 'text-slate-700'} ${!canEdit ? 'cursor-not-allowed' : ''}`}
                         />
                          {contextText && <span className="text-xs text-indigo-400 italic mt-0.5 px-2">{contextText}</span>}
                     </div>
                 </div>
                 <select
                     value={action.assigneeId || ''}
+                    disabled={!canEdit}
                     onChange={(e) => {
                         const val = e.target.value || null;
                         if(isGlobal) dataService.updateGlobalAction(team.id, {...action, assigneeId: val});
                         else updateSession(s => { const a = s.actions.find(x => x.id === action.id); if(a) a.assigneeId = val; });
                         setRefreshTick(t => t+1);
                     }}
-                    className="text-xs border border-slate-200 rounded p-1.5 bg-white text-slate-600 focus:border-retro-primary focus:ring-1 focus:ring-indigo-100 outline-none"
+                    className={`text-xs border border-slate-200 rounded p-1.5 bg-white text-slate-600 focus:border-retro-primary focus:ring-1 focus:ring-indigo-100 outline-none ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
                 >
                     <option value="">Unassigned</option>
-                    {team.members.map(m => (
+                    {participants.map(m => (
                         <option key={m.id} value={m.id}>{m.name}</option>
                     ))}
                 </select>
@@ -1501,7 +1717,11 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
                 )}
             </div>
             
-            <button onClick={handleExit} className="mt-8 bg-white text-slate-900 px-8 py-3 rounded-lg font-bold hover:bg-slate-200">Return to Dashboard</button>
+            {isFacilitator ? (
+              <button onClick={handleExit} className="mt-8 bg-white text-slate-900 px-8 py-3 rounded-lg font-bold hover:bg-slate-200">Return to Dashboard</button>
+            ) : (
+              <button onClick={handleExit} className="mt-8 bg-white text-slate-900 px-8 py-3 rounded-lg font-bold hover:bg-slate-200">Leave Retrospective</button>
+            )}
         </div>
       );
   };
@@ -1512,11 +1732,11 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
       <div className="p-4 border-b border-slate-200">
         <h3 className="text-sm font-bold text-slate-700 flex items-center">
           <span className="material-symbols-outlined mr-2 text-lg">groups</span>
-          Participants ({team.members.length})
+          Participants ({participants.length})
         </h3>
       </div>
       <div className="flex-grow overflow-y-auto p-3">
-        {team.members.map(member => {
+        {participants.map(member => {
           const isFinished = session.finishedUsers?.includes(member.id);
           const isCurrentUser = member.id === currentUser.id;
           const isOnline = connectedUsers.has(member.id);
@@ -1551,7 +1771,7 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
       </div>
       <div className="p-3 border-t border-slate-200 bg-slate-50">
         <div className="text-xs text-slate-500 text-center">
-          {session.finishedUsers?.length || 0} / {team.members.length} finished
+          {session.finishedUsers?.length || 0} / {participants.length} finished
         </div>
       </div>
     </div>

@@ -1,13 +1,17 @@
 
 import React, { useState, useEffect } from 'react';
 import { dataService } from '../services/dataService';
-import { Team, User, RetroSession } from '../types';
+import { Team, User, RetroSession, ActionItem } from '../types';
 
 export interface InviteData {
   id: string;
   name: string;
   password: string;
+  sessionId?: string;
   session?: RetroSession;
+  members?: User[];
+  globalActions?: ActionItem[];
+  retrospectives?: RetroSession[];
 }
 
 interface Props {

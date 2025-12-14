@@ -2,6 +2,10 @@
 import { Team, User, RetroSession, ActionItem, Column, Template } from '../types';
 
 const STORAGE_KEY = 'retrogemini_data_v2'; // Bump version to clear old data structure issues
+const DATA_ENDPOINT = '/api/data';
+
+let hydratedFromServer = false;
+let hydrateInFlight: Promise<void> | null = null;
 
 const getHex = (twClass: string) => {
     if(twClass.includes('emerald')) return '#10B981';
@@ -36,11 +40,57 @@ const loadData = (): { teams: Team[] } => {
   return s ? JSON.parse(s) : { teams: [] };
 };
 
+const persistToServer = (data: { teams: Team[] }) => {
+  try {
+    fetch(DATA_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    }).catch(() => {
+      // Ignore network errors in offline/local modes
+    });
+  } catch (err) {
+    console.warn('[dataService] Failed to persist to server', err);
+  }
+};
+
 const saveData = (data: { teams: Team[] }) => {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  persistToServer(data);
+};
+
+const hydrateFromServer = async (): Promise<void> => {
+  if (hydratedFromServer) return;
+  if (hydrateInFlight) return hydrateInFlight;
+
+  hydrateInFlight = (async () => {
+    try {
+      const res = await fetch(DATA_ENDPOINT, { cache: 'no-store' });
+      if (!res.ok) throw new Error('Bad status');
+      const remote = await res.json();
+      if (remote?.teams) {
+        const local = loadData();
+        const mergedById: Record<string, Team> = {};
+
+        [...remote.teams, ...local.teams].forEach((team: Team) => {
+          mergedById[team.id] = team;
+        });
+
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ teams: Object.values(mergedById) }));
+      }
+    } catch (err) {
+      console.warn('[dataService] Unable to hydrate from server, falling back to local only', err);
+    } finally {
+      hydratedFromServer = true;
+      hydrateInFlight = null;
+    }
+  })();
+
+  return hydrateInFlight;
 };
 
 export const dataService = {
+  hydrateFromServer,
   createTeam: (name: string, password: string): Team => {
     const data = loadData();
     if (data.teams.some(t => t.name.toLowerCase() === name.toLowerCase())) {
@@ -119,6 +169,8 @@ export const dataService = {
       date: new Date().toLocaleDateString(),
       status: 'IN_PROGRESS',
       phase: 'ICEBREAKER', // Skipped SETUP
+      participants: [...team.members],
+      discussionFocusId: null,
       icebreakerQuestion: icebreakerQuestion,
       columns: templateCols,
       settings: {
@@ -135,6 +187,8 @@ export const dataService = {
       tickets: [],
       groups: [],
       actions: [],
+      openActionsSnapshot: [],
+      historyActionsSnapshot: [],
       happiness: {},
       roti: {},
       finishedUsers: []
@@ -219,7 +273,7 @@ export const dataService = {
   getHex,
 
   // Import a team from invitation data (for invited users)
-  importTeam: (inviteData: { id: string; name: string; password: string; session?: RetroSession }): Team => {
+  importTeam: (inviteData: { id: string; name: string; password: string; sessionId?: string; session?: RetroSession; members?: User[]; globalActions?: ActionItem[]; retrospectives?: RetroSession[] }): Team => {
     const data = loadData();
 
     // Check if team already exists by ID
@@ -251,16 +305,22 @@ export const dataService = {
     }
 
     // Create the team in localStorage for this invited user
+    const enrichedSession = inviteData.session
+      ? { ...inviteData.session, participants: inviteData.session.participants ?? inviteData.members ?? [] }
+      : undefined;
+
     const newTeam: Team = {
       id: inviteData.id,
       name: inviteData.name,
       passwordHash: inviteData.password,
-      members: [
-        { id: 'admin-' + Math.random().toString(36).substr(2, 5), name: 'Facilitator', color: USER_COLORS[0], role: 'facilitator' }
-      ],
+      members: inviteData.members && inviteData.members.length > 0
+        ? inviteData.members
+        : [
+          { id: 'admin-' + Math.random().toString(36).substr(2, 5), name: 'Facilitator', color: USER_COLORS[0], role: 'facilitator' }
+        ],
       customTemplates: [],
-      retrospectives: inviteData.session ? [inviteData.session] : [],
-      globalActions: []
+      retrospectives: inviteData.retrospectives ?? (enrichedSession ? [enrichedSession] : []),
+      globalActions: inviteData.globalActions ?? []
     };
     data.teams.push(newTeam);
     saveData(data);

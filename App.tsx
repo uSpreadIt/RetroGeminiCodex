@@ -12,6 +12,11 @@ const App: React.FC = () => {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [inviteData, setInviteData] = useState<InviteData | null>(null);
   const [pendingSessionId, setPendingSessionId] = useState<string | null>(null);
+  const [hydrated, setHydrated] = useState(false);
+
+  useEffect(() => {
+    dataService.hydrateFromServer().finally(() => setHydrated(true));
+  }, []);
 
   // Check for invitation link on mount - PRIORITY over localStorage
   useEffect(() => {
@@ -29,8 +34,8 @@ const App: React.FC = () => {
           setCurrentUser(null);
           setInviteData(decoded);
           // Store session ID to open after join
-          if (decoded.session?.id) {
-            setPendingSessionId(decoded.session.id);
+          if (decoded.sessionId || decoded.session?.id) {
+            setPendingSessionId(decoded.sessionId || decoded.session?.id || null);
           }
           // Clean the URL without reloading
           window.history.replaceState({}, document.title, window.location.pathname);
@@ -60,7 +65,7 @@ const App: React.FC = () => {
   // Restore session if possible (Simple reload persistence)
   useEffect(() => {
     // Don't restore session if we have an invite link
-    if (inviteData) return;
+    if (inviteData || !hydrated) return;
 
     const savedTeamId = localStorage.getItem('retro_active_team');
     const savedUserId = localStorage.getItem('retro_active_user');
@@ -81,11 +86,24 @@ const App: React.FC = () => {
           : false;
 
         if (!opened) {
-          setView('DASHBOARD');
+          if (resolvedUser.role === 'participant') {
+            const fallbackActive = pendingSessionId
+              ? team.retrospectives.find(r => r.id === pendingSessionId)
+              : team.retrospectives.find(r => r.status === 'IN_PROGRESS');
+
+            if (fallbackActive) {
+              setActiveSessionId(fallbackActive.id);
+              setView('SESSION');
+            } else {
+              setView('LOGIN');
+            }
+          } else {
+            setView('DASHBOARD');
+          }
         }
       }
     }
-  }, [inviteData]);
+  }, [inviteData, hydrated]);
 
   const handleLogin = (team: Team) => {
     setCurrentTeam(team);
@@ -109,7 +127,19 @@ const App: React.FC = () => {
     setInviteData(null);
 
     if (!opened) {
-      setView('DASHBOARD');
+      if (user.role === 'participant') {
+        const fallbackActive = pendingSessionId
+          ? team.retrospectives.find(r => r.id === pendingSessionId)
+          : team.retrospectives[0];
+        if (fallbackActive) {
+          setActiveSessionId(fallbackActive.id);
+          setView('SESSION');
+        } else {
+          setView('LOGIN');
+        }
+      } else {
+        setView('DASHBOARD');
+      }
     }
   };
 
@@ -122,9 +152,14 @@ const App: React.FC = () => {
   };
 
   const handleOpenSession = (sessionId: string) => {
+    if (currentUser?.role === 'participant') return;
     setActiveSessionId(sessionId);
     setView('SESSION');
   };
+
+  if (!hydrated) {
+    return <div className="h-screen flex items-center justify-center text-slate-500">Loading workspace…</div>;
+  }
 
   if (!currentTeam) {
     return <TeamLogin onLogin={handleLogin} onJoin={handleJoin} inviteData={inviteData} />;
@@ -135,7 +170,10 @@ const App: React.FC = () => {
     if (!currentUser || !currentTeam) return null;
     return (
         <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 md:px-6 shrink-0 z-50 shadow-sm">
-            <div className="flex items-center cursor-pointer" onClick={() => setView('DASHBOARD')}>
+            <div
+              className={`flex items-center ${currentUser.role === 'participant' ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
+              onClick={() => currentUser.role !== 'participant' && setView('DASHBOARD')}
+            >
                 <div className="w-8 h-8 bg-gradient-to-br from-indigo-500 to-purple-600 rounded flex items-center justify-center text-white font-bold mr-3 text-lg">R</div>
                 <div className="font-bold text-slate-700 text-lg hidden md:block">RetroGemini <span className="text-slate-400 font-normal text-sm mx-2">/</span> {currentTeam.name}</div>
             </div>
@@ -178,7 +216,7 @@ const App: React.FC = () => {
             </>
         )}
         {view === 'SESSION' && activeSessionId && (
-            <Session 
+            <Session
                 team={currentTeam}
                 currentUser={currentUser!}
                 sessionId={activeSessionId}
@@ -186,6 +224,12 @@ const App: React.FC = () => {
                     // Refresh data before exiting
                     const updated = dataService.getTeam(currentTeam.id);
                     if(updated) setCurrentTeam(updated);
+
+                    if (currentUser?.role === 'participant') {
+                      handleLogout();
+                      return;
+                    }
+
                     setView('DASHBOARD');
                 }}
             />

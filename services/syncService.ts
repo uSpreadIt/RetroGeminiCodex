@@ -3,12 +3,14 @@ import { RetroSession } from '../types';
 
 type SessionUpdateCallback = (session: RetroSession) => void;
 type MemberEventCallback = (data: { userId: string; userName: string }) => void;
+type RosterEventCallback = (data: { id: string; name: string }[]) => void;
 
 class SyncService {
   private socket: Socket | null = null;
   private sessionUpdateCallbacks: SessionUpdateCallback[] = [];
   private memberJoinedCallbacks: MemberEventCallback[] = [];
   private memberLeftCallbacks: MemberEventCallback[] = [];
+  private rosterCallbacks: RosterEventCallback[] = [];
   private currentSessionId: string | null = null;
   private pendingJoin: { sessionId: string; userId: string; userName: string } | null = null;
   private connectionPromise: Promise<void> | null = null;
@@ -72,6 +74,11 @@ class SyncService {
     this.socket.on('member-left', (data: { userId: string; userName: string }) => {
       console.log('[SyncService] Member left:', data.userName);
       this.memberLeftCallbacks.forEach(cb => cb(data));
+    });
+
+    this.socket.on('member-roster', (data: { id: string; name: string }[]) => {
+      console.log('[SyncService] Roster update:', data.map(d => d.name).join(', '));
+      this.rosterCallbacks.forEach(cb => cb(data));
     });
 
     this.socket.on('disconnect', () => {
@@ -148,6 +155,13 @@ class SyncService {
     this.memberLeftCallbacks.push(callback);
     return () => {
       this.memberLeftCallbacks = this.memberLeftCallbacks.filter(cb => cb !== callback);
+    };
+  }
+
+  onRoster(callback: RosterEventCallback) {
+    this.rosterCallbacks.push(callback);
+    return () => {
+      this.rosterCallbacks = this.rosterCallbacks.filter(cb => cb !== callback);
     };
   }
 
