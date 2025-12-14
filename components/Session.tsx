@@ -141,6 +141,34 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
     });
   };
 
+  const mergeRoster = (roster: { id: string; name: string }[]) => {
+    const existing = sessionRef.current?.participants ?? [];
+    const updated = [...existing];
+    let nextColorIndex = existing.length;
+
+    roster.forEach((entry) => {
+      const already = updated.find(p => p.id === entry.id || p.name === entry.name);
+      if (already) {
+        already.id = entry.id;
+        already.name = entry.name;
+        return;
+      }
+
+      const teamMember = (dataService.getTeam(team.id) || team).members.find(m => m.id === entry.id || m.name === entry.name);
+      const color = teamMember?.color || COLOR_POOL[nextColorIndex % COLOR_POOL.length];
+      nextColorIndex++;
+
+      updated.push({
+        id: entry.id,
+        name: entry.name,
+        color,
+        role: teamMember?.role || 'participant'
+      });
+    });
+
+    updateSession(s => { s.participants = updated; });
+  };
+
   // Connect to sync service on mount
   useEffect(() => {
     let isMounted = true;
@@ -177,6 +205,11 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
       });
     });
 
+    const unsubRoster = syncService.onRoster((roster) => {
+      setConnectedUsers(new Set(roster.map(r => r.id)));
+      mergeRoster(roster);
+    });
+
     // Send initial session state (facilitator sends their version)
     if (currentUser.role === 'facilitator' && session) {
       setTimeout(() => syncService.updateSession(session), 500);
@@ -186,6 +219,7 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
       unsubUpdate();
       unsubJoin();
       unsubLeave();
+      unsubRoster();
       syncService.leaveSession();
       isMounted = false;
     };
@@ -484,7 +518,6 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
       s.phase = p;
       s.settings.timerRunning = false;
       s.settings.timerSeconds = s.settings.timerInitial || 300;
-      setTimerFinished(false);
       s.finishedUsers = [];
       setIsEditingColumns(false);
       setIsEditingTimer(false);

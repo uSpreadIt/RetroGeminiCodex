@@ -77,6 +77,10 @@ io.on('connection', (socket) => {
     }
     teamMembers.get(sessionId).set(socket.id, { id: userId, name: userName });
 
+    // Share current roster (including the new joiner) with everyone in the room
+    const roster = Array.from(teamMembers.get(sessionId).values());
+    io.to(sessionId).emit('member-roster', roster);
+
     // Log current room members
     const room = io.sockets.adapter.rooms.get(sessionId);
     console.log(`[Server] Session ${sessionId} now has ${room?.size || 0} connected clients`);
@@ -128,6 +132,10 @@ io.on('connection', (socket) => {
         userId: socket.userId,
         userName: socket.userName
       });
+
+      // Broadcast the updated roster
+      const roster = Array.from((teamMembers.get(sessionId) || new Map()).values());
+      io.to(sessionId).emit('member-roster', roster);
     }
   });
 });
