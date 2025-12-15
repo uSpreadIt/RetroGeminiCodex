@@ -27,7 +27,8 @@ app.get('/ready', (_req, res) => res.status(200).send('READY'));
 app.use(express.json({ limit: '1mb' }));
 
 // Basic persistence for teams/actions between browser sessions
-const DATA_FILE = join(__dirname, 'data.json');
+// Allow overriding path to support platforms where /app is read-only (e.g. Railway build output)
+const DATA_FILE = process.env.DATA_FILE_PATH || join(process.env.DATA_DIR || '/tmp', 'data.json');
 let persistedData = { teams: [] };
 
 const smtpEnabled = !!process.env.SMTP_HOST;
@@ -43,6 +44,11 @@ const mailer = smtpEnabled
   : null;
 
 try {
+  const dataDir = dirname(DATA_FILE);
+  if (!fs.existsSync(dataDir)) {
+    fs.mkdirSync(dataDir, { recursive: true });
+  }
+
   if (fs.existsSync(DATA_FILE)) {
     persistedData = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
   }

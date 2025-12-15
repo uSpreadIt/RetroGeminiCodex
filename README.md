@@ -185,6 +185,11 @@ Si vous préférez ne pas utiliser Docker :
 
 Railway injecte automatiquement la variable `PORT`. Aucune configuration supplémentaire n'est requise.
 
+Pour la persistance des données (teams, actions, etc.), spécifiez un chemin en écriture via une variable d'environnement si le dossier de l'application est en lecture seule :
+
+- `DATA_FILE_PATH=/data/data.json` (recommandé avec un volume Railway monté sur `/data`)
+- ou `DATA_DIR=/tmp` pour utiliser un dossier temporaire (non persistant).
+
 ### Activer l'envoi d'emails (invitation par email)
 
 Pour que l'envoi d'invitations par email fonctionne sur Railway, ajoutez des variables d'environnement SMTP :
