@@ -31,15 +31,36 @@ app.use(express.json({ limit: '1mb' }));
 const DATA_FILE = process.env.DATA_FILE_PATH || join(process.env.DATA_DIR || '/tmp', 'data.json');
 let persistedData = { teams: [] };
 
-const smtpEnabled = !!process.env.SMTP_HOST;
-const smtpPort = Number(process.env.SMTP_PORT || 587);
+const smtpHost =
+  process.env.SMTP_HOST ||
+  process.env.RESEND_SMTP_HOST ||
+  process.env.RAILWAY_SMTP_HOST ||
+  process.env.RAILWAY_RELAY_SMTP_HOST;
+const smtpUser =
+  process.env.SMTP_USER ||
+  process.env.RESEND_SMTP_USER ||
+  process.env.RAILWAY_SMTP_USER ||
+  process.env.RAILWAY_RELAY_SMTP_USER;
+const smtpPass =
+  process.env.SMTP_PASS ||
+  process.env.RESEND_SMTP_PASS ||
+  process.env.RAILWAY_SMTP_PASS ||
+  process.env.RAILWAY_RELAY_SMTP_PASS;
+const smtpPort = Number(
+  process.env.SMTP_PORT ||
+  process.env.RESEND_SMTP_PORT ||
+  process.env.RAILWAY_SMTP_PORT ||
+  process.env.RAILWAY_RELAY_SMTP_PORT ||
+  587
+);
+const smtpEnabled = !!smtpHost;
 const smtpTimeouts = {
   connectionTimeout: Number(process.env.SMTP_CONNECTION_TIMEOUT || 8000),
   greetingTimeout: Number(process.env.SMTP_GREETING_TIMEOUT || 8000),
   socketTimeout: Number(process.env.SMTP_SOCKET_TIMEOUT || 12000)
 };
 const smtpDebugInfo = {
-  host: process.env.SMTP_HOST || null,
+  host: smtpHost || null,
   port: smtpPort,
   secure: process.env.SMTP_SECURE === 'true' || smtpPort === 465,
   requireTLS: process.env.SMTP_REQUIRE_TLS === 'true',
@@ -48,13 +69,13 @@ const smtpDebugInfo = {
 };
 const mailer = smtpEnabled
   ? nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
+      host: smtpHost,
       port: smtpPort,
       secure: process.env.SMTP_SECURE === 'true' || smtpPort === 465,
       requireTLS: process.env.SMTP_REQUIRE_TLS === 'true',
       ignoreTLS: process.env.SMTP_IGNORE_TLS === 'true',
-      auth: process.env.SMTP_USER
-        ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
+      auth: smtpUser
+        ? { user: smtpUser, pass: smtpPass }
         : undefined,
       ...smtpTimeouts
     })

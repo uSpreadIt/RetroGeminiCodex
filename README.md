@@ -213,6 +213,8 @@ En cas d'erreur `Connection timeout` / `ETIMEDOUT`, le host/port n'est pas joign
 - Ajustez les timeouts si besoin avec `SMTP_CONNECTION_TIMEOUT` / `SMTP_GREETING_TIMEOUT` / `SMTP_SOCKET_TIMEOUT` (en ms).
 - Si le provider impose TLS strict sur 465, activez `SMTP_SECURE=true`, mais privilégiez 587+STARTTLS quand c'est possible.
 
+Alternative recommandée si l'egress SMTP est filtré : déployez le template **Resend Railway SMTP Gateway** (https://railway.com/deploy/resend-railway-smtp-gateway). Ce service tourne dans Railway et expose des credentials SMTP atteignables ; copiez l'hôte/le port/l'utilisateur/le mot de passe fournis vers `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` (via Variables du service ou une Variable Set partagée), laissez `SMTP_SECURE=false` et utilisez STARTTLS sur 587 ou 2525.
+
 Avec un provider type Mailtrap, vous pouvez copier les valeurs SMTP fournies par Mailtrap dans ces variables.
 
 ### Déploiement manuel via CLI
