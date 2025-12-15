@@ -33,6 +33,19 @@ let persistedData = { teams: [] };
 
 const smtpEnabled = !!process.env.SMTP_HOST;
 const smtpPort = Number(process.env.SMTP_PORT || 587);
+const smtpTimeouts = {
+  connectionTimeout: Number(process.env.SMTP_CONNECTION_TIMEOUT || 8000),
+  greetingTimeout: Number(process.env.SMTP_GREETING_TIMEOUT || 8000),
+  socketTimeout: Number(process.env.SMTP_SOCKET_TIMEOUT || 12000)
+};
+const smtpDebugInfo = {
+  host: process.env.SMTP_HOST || null,
+  port: smtpPort,
+  secure: process.env.SMTP_SECURE === 'true' || smtpPort === 465,
+  requireTLS: process.env.SMTP_REQUIRE_TLS === 'true',
+  ignoreTLS: process.env.SMTP_IGNORE_TLS === 'true',
+  timeouts: smtpTimeouts
+};
 const mailer = smtpEnabled
   ? nodemailer.createTransport({
       host: process.env.SMTP_HOST,
@@ -43,10 +56,7 @@ const mailer = smtpEnabled
       auth: process.env.SMTP_USER
         ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
         : undefined,
-      // Prevent the client from hanging forever on unreachable SMTP hosts
-      connectionTimeout: Number(process.env.SMTP_CONNECTION_TIMEOUT || 15000),
-      greetingTimeout: Number(process.env.SMTP_GREETING_TIMEOUT || 15000),
-      socketTimeout: Number(process.env.SMTP_SOCKET_TIMEOUT || 20000)
+      ...smtpTimeouts
     })
   : null;
 
@@ -68,7 +78,7 @@ app.get('/api/data', (_req, res) => {
 });
 
 app.get('/api/email-config', (_req, res) => {
-  res.json({ enabled: smtpEnabled, host: process.env.SMTP_HOST || null });
+  res.json({ enabled: smtpEnabled, ...smtpDebugInfo });
 });
 
 app.post('/api/email-test', async (_req, res) => {
@@ -78,12 +88,12 @@ app.post('/api/email-test', async (_req, res) => {
 
   try {
     await mailer.verify();
-    res.json({ ok: true });
+    res.json({ ok: true, ...smtpDebugInfo });
   } catch (err) {
     console.error('[Server] SMTP verify failed', err);
     const message = err?.message || 'Verification failed';
     const code = err?.code || err?.responseCode || null;
-    res.status(500).json({ ok: false, message, code });
+    res.status(500).json({ ok: false, message, code, ...smtpDebugInfo });
   }
 });
 
@@ -128,7 +138,7 @@ Use this link to join: ${link}
     console.error('[Server] Failed to send invite email', err);
     const message = err?.message || 'Failed to send email';
     const code = err?.code || err?.responseCode || null;
-    res.status(500).json({ error: 'send_failed', message, code });
+    res.status(500).json({ error: 'send_failed', message, code, ...smtpDebugInfo });
   }
 });
 

@@ -208,9 +208,10 @@ Pour que l'envoi d'invitations par email fonctionne sur Railway, ajoutez des var
 En cas d'erreur `Connection timeout` / `ETIMEDOUT`, le host/port n'est pas joignable depuis Railway :
 
 - Utilisez le bouton "Test SMTP" dans le modal d'invitation pour vérifier la connectivité en direct ; le message renvoyé contiendra le code d'erreur SMTP.
-- Essayez le port `587` avec STARTTLS (`SMTP_SECURE=false` ou vide) si votre provider le permet.
+- Évitez les ports 25 et 465 souvent bloqués en egress ; essayez le port `587` avec STARTTLS (`SMTP_SECURE=false` ou vide) ou `2525` selon votre provider.
 - Vérifiez les pare-feux / allowlists côté provider pour autoriser la sortie depuis Railway.
 - Ajustez les timeouts si besoin avec `SMTP_CONNECTION_TIMEOUT` / `SMTP_GREETING_TIMEOUT` / `SMTP_SOCKET_TIMEOUT` (en ms).
+- Si le provider impose TLS strict sur 465, activez `SMTP_SECURE=true`, mais privilégiez 587+STARTTLS quand c'est possible.
 
 Avec un provider type Mailtrap, vous pouvez copier les valeurs SMTP fournies par Mailtrap dans ces variables.
 

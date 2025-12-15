@@ -17,6 +17,9 @@ const InviteModal: React.FC<Props> = ({ team, activeSession, onClose, onLogout }
   const [statusMessage, setStatusMessage] = useState('');
   const [emailEnabled, setEmailEnabled] = useState<boolean | null>(null);
   const [smtpHost, setSmtpHost] = useState('');
+  const [smtpPort, setSmtpPort] = useState<number | null>(null);
+  const [smtpSecure, setSmtpSecure] = useState(false);
+  const [smtpRequireTLS, setSmtpRequireTLS] = useState(false);
   const [testStatus, setTestStatus] = useState<'idle' | 'running' | 'success' | 'fail'>('idle');
   const [testMessage, setTestMessage] = useState('');
 
@@ -45,9 +48,20 @@ const InviteModal: React.FC<Props> = ({ team, activeSession, onClose, onLogout }
       .then((cfg) => {
         setEmailEnabled(!!cfg?.enabled);
         setSmtpHost(cfg?.host || '');
+        setSmtpPort(cfg?.port ?? null);
+        setSmtpSecure(!!cfg?.secure);
+        setSmtpRequireTLS(!!cfg?.requireTLS);
       })
       .catch(() => setEmailEnabled(false));
   }, []);
+
+  const buildTimeoutHint = (code?: string) => {
+    if (code && code.includes('ETIMEDOUT')) {
+      const hostPort = [smtpHost || 'SMTP host', smtpPort || '587'].join(':');
+      return ` — ${hostPort} inaccessible depuis Railway. Essayez le port 587 avec STARTTLS (SMTP_SECURE=false, SMTP_REQUIRE_TLS=true si nécessaire) ou un provider qui autorise l'egress Railway (ex: Mailtrap, Resend, Brevo).`;
+    }
+    return '';
+  };
 
   const handlePersonalInvite = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -76,17 +90,15 @@ const InviteModal: React.FC<Props> = ({ team, activeSession, onClose, onLogout }
           const body = await res.json().catch(() => ({}));
           const detail = body?.message || body?.error || 'Email service not configured';
           const code = body?.code ? ` (${body.code})` : '';
-          throw new Error(`${detail}${code}`);
+          const hint = buildTimeoutHint(body?.code || body?.message);
+          throw new Error(`${detail}${code}${hint}`);
         }
 
         setStatus('sent');
         setStatusMessage('Invitation sent by email.');
       } catch (err: any) {
         setStatus('error');
-        const codeHint = err?.message?.includes('ETIMEDOUT')
-          ? ' — SMTP host unreachable from Railway. Check host/port/firewall and try port 587 with STARTTLS.'
-          : '';
-        setStatusMessage((err?.message || 'Unable to send email. Copy the link instead.') + codeHint);
+        setStatusMessage(err?.message || 'Unable to send email. Copy the link instead.');
       }
     } catch (err: any) {
       setStatus('error');
@@ -149,22 +161,20 @@ const InviteModal: React.FC<Props> = ({ team, activeSession, onClose, onLogout }
                   setTestMessage('Testing SMTP connectivity…');
                   try {
                     const res = await fetch('/api/email-test', { method: 'POST' });
-                    const body = await res.json();
-                    if (!res.ok || !body?.ok) {
-                      const detail = body?.message || 'Connection failed';
-                      const code = body?.code ? ` (${body.code})` : '';
-                      throw new Error(`${detail}${code}`);
-                    }
-                    setTestStatus('success');
-                    setTestMessage('SMTP reachable. You can send invites.');
-                  } catch (err: any) {
-                    setTestStatus('fail');
-                    const codeHint = err?.message?.includes('ETIMEDOUT')
-                      ? ' — The SMTP host/port cannot be reached from Railway. Try port 587 with STARTTLS or use a provider that allows Railway egress.'
-                      : '';
-                    setTestMessage((err?.message || 'SMTP verification failed') + codeHint);
+                  const body = await res.json();
+                  if (!res.ok || !body?.ok) {
+                    const detail = body?.message || 'Connection failed';
+                    const code = body?.code ? ` (${body.code})` : '';
+                    const hint = buildTimeoutHint(body?.code || body?.message);
+                    throw new Error(`${detail}${code}${hint}`);
                   }
-                }}
+                  setTestStatus('success');
+                  setTestMessage('SMTP reachable. You can send invites.');
+                } catch (err: any) {
+                  setTestStatus('fail');
+                  setTestMessage(err?.message || 'SMTP verification failed');
+                }
+              }}
                 className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-[11px] font-semibold hover:bg-slate-200"
                 disabled={testStatus === 'running'}
               >
@@ -175,6 +185,9 @@ const InviteModal: React.FC<Props> = ({ team, activeSession, onClose, onLogout }
                   {testMessage}
                 </span>
               )}
+              <span className="text-[10px] text-slate-400">
+                Host: {smtpHost || 'n/a'}:{smtpPort || 587} · Mode: {smtpSecure ? 'TLS' : smtpRequireTLS ? 'STARTTLS' : 'Plain/STARTTLS optional'}
+              </span>
             </div>
           )}
           <input
@@ -210,6 +223,7 @@ const InviteModal: React.FC<Props> = ({ team, activeSession, onClose, onLogout }
               <li>In Railway, open the project service for this app and go to <strong>Variables</strong>.</li>
               <li>Add <code>SMTP_HOST</code> (e.g. your provider hostname{smtpHost ? `, current value: ${smtpHost}` : ''}).</li>
               <li>Add <code>SMTP_PORT</code> (usually 587), <code>SMTP_USER</code>, <code>SMTP_PASS</code>, and optional <code>SMTP_SECURE=true</code> for TLS.</li>
+              <li>Avoid ports 25/465 that are souvent bloqués en sortie sur Railway ; privilégiez le port 587 avec STARTTLS ou 2525 chez certains providers (Mailtrap).</li>
               <li>Set <code>FROM_EMAIL</code> if it differs from the SMTP user.</li>
               <li>Redeploy; the banner will disappear when SMTP is detected.</li>
             </ol>
