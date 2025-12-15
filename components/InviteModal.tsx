@@ -20,6 +20,7 @@ const InviteModal: React.FC<Props> = ({ team, activeSession, onClose, onLogout }
   const [smtpPort, setSmtpPort] = useState<number | null>(null);
   const [smtpSecure, setSmtpSecure] = useState(false);
   const [smtpRequireTLS, setSmtpRequireTLS] = useState(false);
+  const [smtpPlaceholder, setSmtpPlaceholder] = useState(false);
   const [testStatus, setTestStatus] = useState<'idle' | 'running' | 'success' | 'fail'>('idle');
   const [testMessage, setTestMessage] = useState('');
 
@@ -46,11 +47,12 @@ const InviteModal: React.FC<Props> = ({ team, activeSession, onClose, onLogout }
     fetch('/api/email-config')
       .then((res) => res.json())
       .then((cfg) => {
-        setEmailEnabled(!!cfg?.enabled);
+        setEmailEnabled(!!cfg?.enabled && !cfg?.placeholderHost);
         setSmtpHost(cfg?.host || '');
         setSmtpPort(cfg?.port ?? null);
         setSmtpSecure(!!cfg?.secure);
         setSmtpRequireTLS(!!cfg?.requireTLS);
+        setSmtpPlaceholder(!!cfg?.placeholderHost);
       })
       .catch(() => setEmailEnabled(false));
   }, []);
@@ -145,6 +147,12 @@ const InviteModal: React.FC<Props> = ({ team, activeSession, onClose, onLogout }
                   Email service not configured. Add SMTP env vars in Railway to enable sending.
                 </p>
               )}
+              {smtpPlaceholder && (
+                <p className="text-[11px] text-amber-700 font-semibold mt-1">
+                  SMTP variables look unresolved (e.g. <code>${'{{service.SMTP_HOST}}'}</code>). Ensure the service name in your
+                  references matches the gateway you deployed (no extra dashes/underscores) so Railway injects real values.
+                </p>
+              )}
             </div>
             {status !== 'idle' && (
               <span className={`text-xs font-bold ${status === 'sent' ? 'text-emerald-600' : status === 'sending' ? 'text-slate-500' : 'text-amber-600'}`}>
@@ -176,7 +184,7 @@ const InviteModal: React.FC<Props> = ({ team, activeSession, onClose, onLogout }
                 }
               }}
                 className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-[11px] font-semibold hover:bg-slate-200"
-                disabled={testStatus === 'running'}
+                disabled={testStatus === 'running' || smtpPlaceholder}
               >
                 {testStatus === 'running' ? 'Testing…' : 'Test SMTP now'}
               </button>
@@ -209,7 +217,7 @@ const InviteModal: React.FC<Props> = ({ team, activeSession, onClose, onLogout }
             <button
               type="submit"
               className="px-4 py-2 bg-indigo-600 text-white rounded-lg font-bold text-sm hover:bg-indigo-700 disabled:opacity-50"
-              disabled={!inviteeEmail.trim() || status === 'sending'}
+              disabled={!inviteeEmail.trim() || status === 'sending' || emailEnabled === false || smtpPlaceholder}
             >
               {status === 'sending' ? 'Sending…' : 'Send invite'}
             </button>
@@ -229,6 +237,7 @@ const InviteModal: React.FC<Props> = ({ team, activeSession, onClose, onLogout }
                 <li>Dans le service gateway, ajoutez <code>RESEND_API_KEY</code> (clé API Resend) pour générer les credentials SMTP.</li>
                 <li>Dans ce projet, mappez vos variables SMTP via des références Railway : <code>SMTP_HOST=${`{{resend-railway-gateway.SMTP_HOST}}`}</code>, <code>SMTP_PORT=${`{{resend-railway-gateway.SMTP_PORT}}`}</code>, <code>SMTP_USER=${`{{resend-railway-gateway.SMTP_USER}}`}</code>, <code>SMTP_PASS=${`{{resend-railway-gateway.SMTP_PASS}}`}</code>.</li>
                 <li>Redéployez : le test SMTP doit réussir et les invitations utiliseront ce relay accessible depuis Railway.</li>
+                <li>Si l'UI affiche "SMTP variables look unresolved", vérifiez que le nom du service dans vos références (<code>${`{{...}}`}</code>) correspond exactement au service gateway et évitez les guillemets ou espaces.</li>
               </ul>
               <li>Set <code>FROM_EMAIL</code> if it differs from the SMTP user.</li>
               <li>Redeploy; the banner will disappear when SMTP is detected.</li>

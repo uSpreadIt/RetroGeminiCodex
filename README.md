@@ -224,6 +224,7 @@ Alternative recommandée si l'egress SMTP est filtré : déployez le template **
    - `SMTP_PASS=${{resend-railway-gateway.SMTP_PASS}}`
    - (optionnel) `FROM_EMAIL` si l'expéditeur doit être différent.
    Railway remplacera automatiquement ces références par les valeurs du service gateway ; redéployez pour prendre en compte.
+   - Assurez-vous que le nom du service (`resend-railway-gateway` dans l'exemple) correspond exactement à votre service gateway. Si le UI affiche encore des références du type `${{service.SMTP_HOST}}`, c'est que la variable n'a pas été résolue (nom/service ou guillemets incorrects).
 3. Laissez `SMTP_SECURE=false` et utilisez STARTTLS sur 587 ou 2525 (valeur par défaut déjà OK).
 4. Dans l'UI, utilisez le bouton « Test SMTP » : si la connexion réussit, les invitations fonctionneront via le gateway.
 

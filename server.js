@@ -31,29 +31,42 @@ app.use(express.json({ limit: '1mb' }));
 const DATA_FILE = process.env.DATA_FILE_PATH || join(process.env.DATA_DIR || '/tmp', 'data.json');
 let persistedData = { teams: [] };
 
-const smtpHost =
+const isPlaceholder = (value) =>
+  typeof value === 'string' && value.trim().includes('${{') && value.trim().includes('}}');
+const resolveEnv = (value) => {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (isPlaceholder(trimmed)) return null;
+  return trimmed;
+};
+
+const rawSmtpHost =
   process.env.SMTP_HOST ||
   process.env.RESEND_SMTP_HOST ||
   process.env.RAILWAY_SMTP_HOST ||
   process.env.RAILWAY_RELAY_SMTP_HOST;
-const smtpUser =
+const rawSmtpUser =
   process.env.SMTP_USER ||
   process.env.RESEND_SMTP_USER ||
   process.env.RAILWAY_SMTP_USER ||
   process.env.RAILWAY_RELAY_SMTP_USER;
-const smtpPass =
+const rawSmtpPass =
   process.env.SMTP_PASS ||
   process.env.RESEND_SMTP_PASS ||
   process.env.RAILWAY_SMTP_PASS ||
   process.env.RAILWAY_RELAY_SMTP_PASS;
-const smtpPort = Number(
+const rawSmtpPort =
   process.env.SMTP_PORT ||
   process.env.RESEND_SMTP_PORT ||
   process.env.RAILWAY_SMTP_PORT ||
-  process.env.RAILWAY_RELAY_SMTP_PORT ||
-  587
-);
-const smtpEnabled = !!smtpHost;
+  process.env.RAILWAY_RELAY_SMTP_PORT;
+
+const smtpHost = resolveEnv(rawSmtpHost);
+const smtpUser = resolveEnv(rawSmtpUser);
+const smtpPass = resolveEnv(rawSmtpPass);
+const smtpPort = Number(resolveEnv(rawSmtpPort) || 587);
+const smtpPlaceholderHost = !!rawSmtpHost && !smtpHost && isPlaceholder(rawSmtpHost);
+const smtpEnabled = !!smtpHost && !smtpPlaceholderHost;
 const smtpTimeouts = {
   connectionTimeout: Number(process.env.SMTP_CONNECTION_TIMEOUT || 8000),
   greetingTimeout: Number(process.env.SMTP_GREETING_TIMEOUT || 8000),
@@ -61,6 +74,8 @@ const smtpTimeouts = {
 };
 const smtpDebugInfo = {
   host: smtpHost || null,
+  rawHost: rawSmtpHost || null,
+  placeholderHost: smtpPlaceholderHost,
   port: smtpPort,
   secure: process.env.SMTP_SECURE === 'true' || smtpPort === 465,
   requireTLS: process.env.SMTP_REQUIRE_TLS === 'true',
@@ -103,6 +118,14 @@ app.get('/api/email-config', (_req, res) => {
 });
 
 app.post('/api/email-test', async (_req, res) => {
+  if (smtpPlaceholderHost) {
+    return res.status(400).json({
+      ok: false,
+      error: 'smtp_placeholder',
+      message: 'SMTP_HOST is still a Railway reference (e.g. ${{service.VAR}}). Replace it with a resolved value by mapping variables from the gateway service.',
+      ...smtpDebugInfo
+    });
+  }
   if (!smtpEnabled || !mailer) {
     return res.status(501).json({ error: 'email_not_configured' });
   }
@@ -130,6 +153,13 @@ app.post('/api/data', (req, res) => {
 });
 
 app.post('/api/send-invite', async (req, res) => {
+  if (smtpPlaceholderHost) {
+    return res.status(400).json({
+      error: 'smtp_placeholder',
+      message: 'SMTP_HOST still points to a Railway reference (e.g. ${{gateway.SMTP_HOST}}). Map the gateway variables so they resolve to real values before sending emails.',
+      ...smtpDebugInfo
+    });
+  }
   if (!smtpEnabled || !mailer) {
     return res.status(501).json({ error: 'email_not_configured' });
   }
