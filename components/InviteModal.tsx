@@ -71,14 +71,20 @@ const InviteModal: React.FC<Props> = ({ team, activeSession, onClose, onLogout }
         });
 
         if (!res.ok) {
-          throw new Error('Email service not configured');
+          const body = await res.json().catch(() => ({}));
+          const detail = body?.message || body?.error || 'Email service not configured';
+          const code = body?.code ? ` (${body.code})` : '';
+          throw new Error(`${detail}${code}`);
         }
 
         setStatus('sent');
         setStatusMessage('Invitation sent by email.');
       } catch (err: any) {
         setStatus('error');
-        setStatusMessage(err.message || 'Unable to send email. Copy the link instead.');
+        const codeHint = err?.message?.includes('ETIMEDOUT')
+          ? ' — SMTP host unreachable from Railway. Check host/port/firewall and try port 587 with STARTTLS.'
+          : '';
+        setStatusMessage((err?.message || 'Unable to send email. Copy the link instead.') + codeHint);
       }
     } catch (err: any) {
       setStatus('error');

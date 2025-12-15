@@ -39,7 +39,11 @@ const mailer = smtpEnabled
       secure: process.env.SMTP_SECURE === 'true',
       auth: process.env.SMTP_USER
         ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
-        : undefined
+        : undefined,
+      // Prevent the client from hanging forever on unreachable SMTP hosts
+      connectionTimeout: Number(process.env.SMTP_CONNECTION_TIMEOUT || 15000),
+      greetingTimeout: Number(process.env.SMTP_GREETING_TIMEOUT || 15000),
+      socketTimeout: Number(process.env.SMTP_SOCKET_TIMEOUT || 20000)
     })
   : null;
 
@@ -103,7 +107,9 @@ Use this link to join: ${link}
     res.status(204).end();
   } catch (err) {
     console.error('[Server] Failed to send invite email', err);
-    res.status(500).json({ error: 'send_failed' });
+    const message = err?.message || 'Failed to send email';
+    const code = err?.code || err?.responseCode || null;
+    res.status(500).json({ error: 'send_failed', message, code });
   }
 });
 

@@ -203,6 +203,12 @@ Pour que l'envoi d'invitations par email fonctionne sur Railway, ajoutez des var
    - `FROM_EMAIL` (optionnel) si l'adresse d'expéditeur diffère de `SMTP_USER`
 3. Sauvegardez puis relancez le déploiement ; l'UI affichera que l'email est prêt dès que `SMTP_HOST` est détecté.
 
+En cas d'erreur `Connection timeout` / `ETIMEDOUT`, le host/port n'est pas joignable depuis Railway :
+
+- Essayez le port `587` avec STARTTLS (`SMTP_SECURE=false` ou vide) si votre provider le permet.
+- Vérifiez les pare-feux / allowlists côté provider pour autoriser la sortie depuis Railway.
+- Ajustez les timeouts si besoin avec `SMTP_CONNECTION_TIMEOUT` / `SMTP_GREETING_TIMEOUT` / `SMTP_SOCKET_TIMEOUT` (en ms).
+
 Avec un provider type Mailtrap, vous pouvez copier les valeurs SMTP fournies par Mailtrap dans ces variables.
 
 ### Déploiement manuel via CLI
