@@ -199,12 +199,15 @@ Pour que l'envoi d'invitations par email fonctionne sur Railway, ajoutez des var
    - `SMTP_HOST` : nom d'hôte SMTP (ex. `smtp.gmail.com` ou hôte de votre provider)
    - `SMTP_PORT` : port (587 par défaut)
    - `SMTP_USER` et `SMTP_PASS` : identifiants SMTP
-   - `SMTP_SECURE=true` si votre fournisseur impose TLS explicite
+   - `SMTP_SECURE=true` si votre fournisseur impose TLS explicite (défaut activé sur le port 465)
+   - `SMTP_REQUIRE_TLS=true` si le provider impose STARTTLS
+   - `SMTP_IGNORE_TLS=true` pour un provider qui refuse STARTTLS
    - `FROM_EMAIL` (optionnel) si l'adresse d'expéditeur diffère de `SMTP_USER`
 3. Sauvegardez puis relancez le déploiement ; l'UI affichera que l'email est prêt dès que `SMTP_HOST` est détecté.
 
 En cas d'erreur `Connection timeout` / `ETIMEDOUT`, le host/port n'est pas joignable depuis Railway :
 
+- Utilisez le bouton "Test SMTP" dans le modal d'invitation pour vérifier la connectivité en direct ; le message renvoyé contiendra le code d'erreur SMTP.
 - Essayez le port `587` avec STARTTLS (`SMTP_SECURE=false` ou vide) si votre provider le permet.
 - Vérifiez les pare-feux / allowlists côté provider pour autoriser la sortie depuis Railway.
 - Ajustez les timeouts si besoin avec `SMTP_CONNECTION_TIMEOUT` / `SMTP_GREETING_TIMEOUT` / `SMTP_SOCKET_TIMEOUT` (en ms).

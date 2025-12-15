@@ -32,11 +32,14 @@ const DATA_FILE = process.env.DATA_FILE_PATH || join(process.env.DATA_DIR || '/t
 let persistedData = { teams: [] };
 
 const smtpEnabled = !!process.env.SMTP_HOST;
+const smtpPort = Number(process.env.SMTP_PORT || 587);
 const mailer = smtpEnabled
   ? nodemailer.createTransport({
       host: process.env.SMTP_HOST,
-      port: Number(process.env.SMTP_PORT || 587),
-      secure: process.env.SMTP_SECURE === 'true',
+      port: smtpPort,
+      secure: process.env.SMTP_SECURE === 'true' || smtpPort === 465,
+      requireTLS: process.env.SMTP_REQUIRE_TLS === 'true',
+      ignoreTLS: process.env.SMTP_IGNORE_TLS === 'true',
       auth: process.env.SMTP_USER
         ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
         : undefined,
@@ -66,6 +69,22 @@ app.get('/api/data', (_req, res) => {
 
 app.get('/api/email-config', (_req, res) => {
   res.json({ enabled: smtpEnabled, host: process.env.SMTP_HOST || null });
+});
+
+app.post('/api/email-test', async (_req, res) => {
+  if (!smtpEnabled || !mailer) {
+    return res.status(501).json({ error: 'email_not_configured' });
+  }
+
+  try {
+    await mailer.verify();
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[Server] SMTP verify failed', err);
+    const message = err?.message || 'Verification failed';
+    const code = err?.code || err?.responseCode || null;
+    res.status(500).json({ ok: false, message, code });
+  }
 });
 
 app.post('/api/data', (req, res) => {

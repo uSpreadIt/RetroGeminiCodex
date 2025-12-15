@@ -17,6 +17,8 @@ const InviteModal: React.FC<Props> = ({ team, activeSession, onClose, onLogout }
   const [statusMessage, setStatusMessage] = useState('');
   const [emailEnabled, setEmailEnabled] = useState<boolean | null>(null);
   const [smtpHost, setSmtpHost] = useState('');
+  const [testStatus, setTestStatus] = useState<'idle' | 'running' | 'success' | 'fail'>('idle');
+  const [testMessage, setTestMessage] = useState('');
 
   // Encode essential team data for invitation (id, name, password)
   // Also include active session data if available
@@ -138,6 +140,43 @@ const InviteModal: React.FC<Props> = ({ team, activeSession, onClose, onLogout }
               </span>
             )}
           </div>
+          {emailEnabled && (
+            <div className="flex items-center gap-2 text-[11px] text-slate-500">
+              <button
+                type="button"
+                onClick={async () => {
+                  setTestStatus('running');
+                  setTestMessage('Testing SMTP connectivity…');
+                  try {
+                    const res = await fetch('/api/email-test', { method: 'POST' });
+                    const body = await res.json();
+                    if (!res.ok || !body?.ok) {
+                      const detail = body?.message || 'Connection failed';
+                      const code = body?.code ? ` (${body.code})` : '';
+                      throw new Error(`${detail}${code}`);
+                    }
+                    setTestStatus('success');
+                    setTestMessage('SMTP reachable. You can send invites.');
+                  } catch (err: any) {
+                    setTestStatus('fail');
+                    const codeHint = err?.message?.includes('ETIMEDOUT')
+                      ? ' — The SMTP host/port cannot be reached from Railway. Try port 587 with STARTTLS or use a provider that allows Railway egress.'
+                      : '';
+                    setTestMessage((err?.message || 'SMTP verification failed') + codeHint);
+                  }
+                }}
+                className="px-2 py-1 bg-slate-100 border border-slate-200 rounded text-[11px] font-semibold hover:bg-slate-200"
+                disabled={testStatus === 'running'}
+              >
+                {testStatus === 'running' ? 'Testing…' : 'Test SMTP now'}
+              </button>
+              {testStatus !== 'idle' && (
+                <span className={`font-semibold ${testStatus === 'success' ? 'text-emerald-600' : 'text-amber-600'}`}>
+                  {testMessage}
+                </span>
+              )}
+            </div>
+          )}
           <input
             type="text"
             placeholder="Name (optional)"
