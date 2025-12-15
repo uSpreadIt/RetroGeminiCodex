@@ -224,7 +224,12 @@ const InviteModal: React.FC<Props> = ({ team, activeSession, onClose, onLogout }
               <li>Add <code>SMTP_HOST</code> (e.g. your provider hostname{smtpHost ? `, current value: ${smtpHost}` : ''}).</li>
               <li>Add <code>SMTP_PORT</code> (usually 587), <code>SMTP_USER</code>, <code>SMTP_PASS</code>, and optional <code>SMTP_SECURE=true</code> for TLS.</li>
               <li>Avoid ports 25/465 that are souvent bloqués en sortie sur Railway ; privilégiez le port 587 avec STARTTLS ou 2525 chez certains providers (Mailtrap).</li>
-              <li>Si votre provider est bloqué en egress, déployez le template <a className="underline" href="https://railway.com/deploy/resend-railway-smtp-gateway" target="_blank" rel="noreferrer">Resend Railway SMTP Gateway</a> et copiez les credentials générés vers ces variables.</li>
+              <li>Si votre provider est bloqué en egress, déployez le template <a className="underline" href="https://railway.com/deploy/resend-railway-smtp-gateway" target="_blank" rel="noreferrer">Resend Railway SMTP Gateway</a> :</li>
+              <ul className="list-disc list-inside pl-4 space-y-1">
+                <li>Dans le service gateway, ajoutez <code>RESEND_API_KEY</code> (clé API Resend) pour générer les credentials SMTP.</li>
+                <li>Dans ce projet, mappez vos variables SMTP via des références Railway : <code>SMTP_HOST=${`{{resend-railway-gateway.SMTP_HOST}}`}</code>, <code>SMTP_PORT=${`{{resend-railway-gateway.SMTP_PORT}}`}</code>, <code>SMTP_USER=${`{{resend-railway-gateway.SMTP_USER}}`}</code>, <code>SMTP_PASS=${`{{resend-railway-gateway.SMTP_PASS}}`}</code>.</li>
+                <li>Redéployez : le test SMTP doit réussir et les invitations utiliseront ce relay accessible depuis Railway.</li>
+              </ul>
               <li>Set <code>FROM_EMAIL</code> if it differs from the SMTP user.</li>
               <li>Redeploy; the banner will disappear when SMTP is detected.</li>
             </ol>

@@ -213,7 +213,21 @@ En cas d'erreur `Connection timeout` / `ETIMEDOUT`, le host/port n'est pas joign
 - Ajustez les timeouts si besoin avec `SMTP_CONNECTION_TIMEOUT` / `SMTP_GREETING_TIMEOUT` / `SMTP_SOCKET_TIMEOUT` (en ms).
 - Si le provider impose TLS strict sur 465, activez `SMTP_SECURE=true`, mais privilégiez 587+STARTTLS quand c'est possible.
 
-Alternative recommandée si l'egress SMTP est filtré : déployez le template **Resend Railway SMTP Gateway** (https://railway.com/deploy/resend-railway-smtp-gateway). Ce service tourne dans Railway et expose des credentials SMTP atteignables ; copiez l'hôte/le port/l'utilisateur/le mot de passe fournis vers `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` (via Variables du service ou une Variable Set partagée), laissez `SMTP_SECURE=false` et utilisez STARTTLS sur 587 ou 2525.
+Alternative recommandée si l'egress SMTP est filtré : déployez le template **Resend Railway SMTP Gateway** (https://railway.com/deploy/resend-railway-smtp-gateway). Ce service tourne dans Railway et expose des credentials SMTP atteignables depuis l'app.
+
+Étapes pour l'utiliser :
+1. Cliquez sur "Deploy on Railway" depuis le template gateway et ajoutez la variable `RESEND_API_KEY` (clé API Resend). Le service démarre et affiche les variables `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`.
+2. Dans votre service **RetroGeminiCodex**, onglet **Variables**, ajoutez :
+   - `SMTP_HOST=${{resend-railway-gateway.SMTP_HOST}}`
+   - `SMTP_PORT=${{resend-railway-gateway.SMTP_PORT}}`
+   - `SMTP_USER=${{resend-railway-gateway.SMTP_USER}}`
+   - `SMTP_PASS=${{resend-railway-gateway.SMTP_PASS}}`
+   - (optionnel) `FROM_EMAIL` si l'expéditeur doit être différent.
+   Railway remplacera automatiquement ces références par les valeurs du service gateway ; redéployez pour prendre en compte.
+3. Laissez `SMTP_SECURE=false` et utilisez STARTTLS sur 587 ou 2525 (valeur par défaut déjà OK).
+4. Dans l'UI, utilisez le bouton « Test SMTP » : si la connexion réussit, les invitations fonctionneront via le gateway.
+
+Les variables `RESEND_SMTP_*`/`RAILWAY_SMTP_*` sont aussi reconnues automatiquement côté serveur si vous préférez les nommer ainsi.
 
 Avec un provider type Mailtrap, vous pouvez copier les valeurs SMTP fournies par Mailtrap dans ces variables.
 
