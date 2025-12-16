@@ -1522,35 +1522,39 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
                              <div className="bg-slate-50 border-t border-slate-100 p-4 rounded-b-xl">
                                  <div className="mb-4">
                                      <h4 className="text-xs font-bold text-slate-500 uppercase mb-2">Proposals</h4>
-                                     {session.actions.filter(a => a.linkedTicketId === item.id && a.type === 'proposal').map(p => {
-                                         const upVotes = Object.values(p.proposalVotes || {}).filter(v=>v==='up').length;
-                                         const neutralVotes = Object.values(p.proposalVotes || {}).filter(v=>v==='neutral').length;
-                                         const downVotes = Object.values(p.proposalVotes || {}).filter(v=>v==='down').length;
-                                         const myVote = p.proposalVotes?.[currentUser.id];
+                                    {session.actions.filter(a => a.linkedTicketId === item.id && a.type === 'proposal').map(p => {
+                                        const upVotes = Object.values(p.proposalVotes || {}).filter(v=>v==='up').length;
+                                        const neutralVotes = Object.values(p.proposalVotes || {}).filter(v=>v==='neutral').length;
+                                        const downVotes = Object.values(p.proposalVotes || {}).filter(v=>v==='down').length;
+                                        const totalVotes = upVotes + neutralVotes + downVotes;
+                                        const myVote = p.proposalVotes?.[currentUser.id];
 
                                          return (
                                          <div key={p.id} className="bg-white p-3 rounded border border-slate-200 mb-2 flex items-center justify-between">
                                              <span className="text-slate-700 text-sm font-medium mr-2">{p.text}</span>
                                              <div className="flex items-center space-x-3">
-                                                 <div className="flex bg-slate-100 rounded-lg p-1 space-x-1">
-                                                     <button onClick={() => handleVoteProposal(p.id, 'up')} className={`px-2 py-1 rounded flex items-center transition ${myVote==='up'?'bg-emerald-100 text-emerald-700 shadow-sm':'hover:bg-white text-slate-500'}`}>
-                                                         <span className="material-symbols-outlined text-sm mr-1">thumb_up</span> 
-                                                         <span className="text-xs font-bold">{upVotes > 0 ? upVotes : ''}</span>
-                                                     </button>
-                                                     <button onClick={() => handleVoteProposal(p.id, 'neutral')} className={`px-2 py-1 rounded flex items-center transition ${myVote==='neutral'?'bg-slate-300 text-slate-800 shadow-sm':'hover:bg-white text-slate-500'}`}>
-                                                         <span className="material-symbols-outlined text-sm mr-1">remove</span>
-                                                         <span className="text-xs font-bold">{neutralVotes > 0 ? neutralVotes : ''}</span>
-                                                     </button>
-                                                     <button onClick={() => handleVoteProposal(p.id, 'down')} className={`px-2 py-1 rounded flex items-center transition ${myVote==='down'?'bg-red-100 text-red-700 shadow-sm':'hover:bg-white text-slate-500'}`}>
-                                                         <span className="material-symbols-outlined text-sm mr-1">thumb_down</span>
-                                                         <span className="text-xs font-bold">{downVotes > 0 ? downVotes : ''}</span>
-                                                     </button>
-                                                 </div>
-                                                 {isFacilitator && (
-                                                     <button onClick={() => handleAcceptProposal(p.id)} className="bg-retro-primary text-white px-3 py-1.5 rounded text-xs font-bold hover:bg-retro-primaryHover shadow-sm">Accept</button>
-                                                 )}
-                                             </div>
-                                         </div>
+                                                <div className="flex bg-slate-100 rounded-lg p-1 space-x-1">
+                                                    <button onClick={() => handleVoteProposal(p.id, 'up')} className={`px-2 py-1 rounded flex items-center transition ${myVote==='up'?'bg-emerald-100 text-emerald-700 shadow-sm':'hover:bg-white text-slate-500'}`}>
+                                                        <span className="material-symbols-outlined text-sm mr-1">thumb_up</span>
+                                                        <span className="text-xs font-bold">{upVotes > 0 ? upVotes : ''}</span>
+                                                    </button>
+                                                    <button onClick={() => handleVoteProposal(p.id, 'neutral')} className={`px-2 py-1 rounded flex items-center transition ${myVote==='neutral'?'bg-slate-300 text-slate-800 shadow-sm':'hover:bg-white text-slate-500'}`}>
+                                                        <span className="material-symbols-outlined text-sm mr-1">remove</span>
+                                                        <span className="text-xs font-bold">{neutralVotes > 0 ? neutralVotes : ''}</span>
+                                                    </button>
+                                                    <button onClick={() => handleVoteProposal(p.id, 'down')} className={`px-2 py-1 rounded flex items-center transition ${myVote==='down'?'bg-red-100 text-red-700 shadow-sm':'hover:bg-white text-slate-500'}`}>
+                                                        <span className="material-symbols-outlined text-sm mr-1">thumb_down</span>
+                                                        <span className="text-xs font-bold">{downVotes > 0 ? downVotes : ''}</span>
+                                                    </button>
+                                                </div>
+                                                <div className="text-[11px] font-bold text-slate-500 px-2 py-1 bg-slate-100 rounded">
+                                                    Total: {totalVotes}
+                                                </div>
+                                                {isFacilitator && (
+                                                    <button onClick={() => handleAcceptProposal(p.id)} className="bg-retro-primary text-white px-3 py-1.5 rounded text-xs font-bold hover:bg-retro-primaryHover shadow-sm">Accept</button>
+                                                )}
+                                            </div>
+                                        </div>
                                      )})}
                                      {session.actions.filter(a => a.linkedTicketId === item.id && a.type === 'new').map(a => (
                                          <div key={a.id} className="flex items-center text-sm bg-emerald-50 p-2 rounded border border-emerald-200 text-emerald-800 mb-2">

@@ -36,7 +36,9 @@ const Dashboard: React.FC<Props> = ({ team, currentUser, onOpenSession, onRefres
   // Combine global actions and actions from all retros
   const allActions = [
       ...team.globalActions.map(a => ({...a, originRetro: 'Dashboard', contextText: ''})),
-      ...team.retrospectives.flatMap(r => r.actions.map(a => {
+      ...team.retrospectives.flatMap(r => r.actions
+        .filter(a => a.type !== 'proposal')
+        .map(a => {
           let contextText = '';
           if (a.linkedTicketId) {
               const t = r.tickets.find(x => x.id === a.linkedTicketId);
