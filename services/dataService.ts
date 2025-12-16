@@ -1,11 +1,11 @@
 
 import { Team, User, RetroSession, ActionItem, Column, Template } from '../types';
 
-const STORAGE_KEY = 'retrogemini_data_v2'; // Bump version to clear old data structure issues
 const DATA_ENDPOINT = '/api/data';
 
 let hydratedFromServer = false;
 let hydrateInFlight: Promise<void> | null = null;
+let dataCache: { teams: Team[] } = { teams: [] };
 
 const getHex = (twClass: string) => {
     if(twClass.includes('emerald')) return '#10B981';
@@ -53,19 +53,14 @@ const PRESETS: Record<string, Column[]> = {
     ]
 };
 
-const loadData = (): { teams: Team[] } => {
-  const s = localStorage.getItem(STORAGE_KEY);
-  return s ? JSON.parse(s) : { teams: [] };
-};
+const loadData = (): { teams: Team[] } => dataCache;
 
-const persistToServer = (data: { teams: Team[] }) => {
+const persistToServer = async (data: { teams: Team[] }) => {
   try {
-    fetch(DATA_ENDPOINT, {
+    await fetch(DATA_ENDPOINT, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data)
-    }).catch(() => {
-      // Ignore network errors in offline/local modes
     });
   } catch (err) {
     console.warn('[dataService] Failed to persist to server', err);
@@ -73,7 +68,7 @@ const persistToServer = (data: { teams: Team[] }) => {
 };
 
 const saveData = (data: { teams: Team[] }) => {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  dataCache = data;
   persistToServer(data);
 };
 
@@ -87,17 +82,10 @@ const hydrateFromServer = async (): Promise<void> => {
       if (!res.ok) throw new Error('Bad status');
       const remote = await res.json();
       if (remote?.teams) {
-        const local = loadData();
-        const mergedById: Record<string, Team> = {};
-
-        [...remote.teams, ...local.teams].forEach((team: Team) => {
-          mergedById[team.id] = team;
-        });
-
-        localStorage.setItem(STORAGE_KEY, JSON.stringify({ teams: Object.values(mergedById) }));
+        dataCache = { teams: remote.teams };
       }
     } catch (err) {
-      console.warn('[dataService] Unable to hydrate from server, falling back to local only', err);
+      console.warn('[dataService] Unable to hydrate from server, using in-memory cache', err);
     } finally {
       hydratedFromServer = true;
       hydrateInFlight = null;
@@ -133,7 +121,7 @@ export const dataService = {
   getAllTeams: (): Team[] => {
       const teams = loadData().teams;
       // Sort alphabetically by name
-      return teams.sort((a, b) => a.name.localeCompare(b.name));
+      return [...teams].sort((a, b) => a.name.localeCompare(b.name));
   },
 
   loginTeam: (name: string, password: string): Team => {
@@ -456,7 +444,7 @@ export const dataService = {
       return existingByName;
     }
 
-    // Create the team in localStorage for this invited user
+    // Create the team in the shared cache for this invited user
     const invitedMember = inviteData.memberId
       ? {
         id: inviteData.memberId,

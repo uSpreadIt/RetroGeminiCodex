@@ -7,8 +7,15 @@ const port = parseInt(process.env.PORT || '8080', 10);
 
 export default defineConfig({
   server: {
-    port: 3000,
+    port: 5173,
     host: '0.0.0.0',
+    proxy: {
+      '/api': 'http://localhost:3000',
+      '/socket.io': {
+        target: 'http://localhost:3000',
+        ws: true
+      }
+    }
   },
   preview: {
     port: port,
