@@ -36,7 +36,6 @@ const TeamLogin: React.FC<Props> = ({ onLogin, onJoin, inviteData }) => {
   // Handle invitation link - auto-switch to JOIN view
   useEffect(() => {
     if (inviteData) {
-      // Import the team into localStorage
       const team = dataService.importTeam(inviteData);
       setSelectedTeam(team);
       setView('JOIN');

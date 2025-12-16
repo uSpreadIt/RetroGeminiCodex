@@ -193,7 +193,7 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
     // Listen for session updates from other clients
     const unsubUpdate = syncService.onSessionUpdate((updatedSession) => {
       setSession(updatedSession);
-      // Also save to localStorage
+      // Persist latest state to the shared data cache
       dataService.updateSession(team.id, updatedSession);
     });
 

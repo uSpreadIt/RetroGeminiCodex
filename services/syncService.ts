@@ -103,7 +103,6 @@ class SyncService {
 
   joinSession(sessionId: string, userId: string, userName: string) {
     this.currentSessionId = sessionId;
-    localStorage.setItem('retro_active_user_name', userName);
 
     const joinData = { sessionId, userId, userName };
 

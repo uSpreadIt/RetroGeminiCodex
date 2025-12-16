@@ -127,8 +127,6 @@ const Dashboard: React.FC<Props> = ({ team, currentUser, onOpenSession, onRefres
   const handleDeleteTeam = () => {
     if (deleteConfirmText === team.name) {
       dataService.deleteTeam(team.id);
-      localStorage.removeItem('retro_active_team');
-      localStorage.removeItem('retro_active_user');
       setShowDeleteModal(false);
       if (onDeleteTeam) {
         onDeleteTeam();

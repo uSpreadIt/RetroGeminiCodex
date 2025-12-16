@@ -18,7 +18,7 @@ const App: React.FC = () => {
     dataService.hydrateFromServer().finally(() => setHydrated(true));
   }, []);
 
-  // Check for invitation link on mount - PRIORITY over localStorage
+  // Check for invitation link on mount
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const joinParam = params.get('join');
@@ -27,9 +27,6 @@ const App: React.FC = () => {
         // Decode UTF-8 encoded base64 string
         const decoded = JSON.parse(decodeURIComponent(escape(atob(joinParam))));
         if (decoded.id && decoded.name && decoded.password) {
-          // Clear any existing session to force the invitation flow
-          localStorage.removeItem('retro_active_team');
-          localStorage.removeItem('retro_active_user');
           setCurrentTeam(null);
           setCurrentUser(null);
           setInviteData(decoded);
@@ -62,54 +59,9 @@ const App: React.FC = () => {
     return false;
   };
 
-  // Restore session if possible (Simple reload persistence)
-  useEffect(() => {
-    // Don't restore session if we have an invite link
-    if (inviteData || !hydrated) return;
-
-    const savedTeamId = localStorage.getItem('retro_active_team');
-    const savedUserId = localStorage.getItem('retro_active_user');
-    if (savedTeamId) {
-      const team = dataService.getTeam(savedTeamId);
-      if (team) {
-        setCurrentTeam(team);
-        let user: User | undefined;
-        if (savedUserId) {
-          user = team.members.find(u => u.id === savedUserId);
-        }
-        const resolvedUser = user ?? team.members[0]; // Default to admin
-        setCurrentUser(resolvedUser);
-
-        // Participants resume directly into the active session when available
-        const opened = resolvedUser.role === 'participant'
-          ? openActiveSessionIfParticipant(team, pendingSessionId)
-          : false;
-
-        if (!opened) {
-          if (resolvedUser.role === 'participant') {
-            const fallbackActive = pendingSessionId
-              ? team.retrospectives.find(r => r.id === pendingSessionId)
-              : team.retrospectives.find(r => r.status === 'IN_PROGRESS');
-
-            if (fallbackActive) {
-              setActiveSessionId(fallbackActive.id);
-              setView('SESSION');
-            } else {
-              setView('LOGIN');
-            }
-          } else {
-            setView('DASHBOARD');
-          }
-        }
-      }
-    }
-  }, [inviteData, hydrated]);
-
   const handleLogin = (team: Team) => {
     setCurrentTeam(team);
     setCurrentUser(team.members[0]); // Default to facilitator on login
-    localStorage.setItem('retro_active_team', team.id);
-    localStorage.setItem('retro_active_user', team.members[0].id);
     setInviteData(null);
     setView('DASHBOARD');
   };
@@ -117,8 +69,6 @@ const App: React.FC = () => {
   const handleJoin = (team: Team, user: User) => {
     setCurrentTeam(team);
     setCurrentUser(user);
-    localStorage.setItem('retro_active_team', team.id);
-    localStorage.setItem('retro_active_user', user.id);
 
     const opened = openActiveSessionIfParticipant(team, pendingSessionId);
 
@@ -146,8 +96,6 @@ const App: React.FC = () => {
   const handleLogout = () => {
     setCurrentTeam(null);
     setCurrentUser(null);
-    localStorage.removeItem('retro_active_team');
-    localStorage.removeItem('retro_active_user');
     setView('LOGIN');
   };
 
