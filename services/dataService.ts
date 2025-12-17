@@ -506,9 +506,16 @@ export const dataService = {
       return m.name.toLowerCase() === userName.toLowerCase();
     });
     if (existingUser) {
-      existingUser.name = userName;
-      if (normalizedEmail) existingUser.email = normalizedEmail;
+      const matchedByIdentity = (inviteToken && existingUser.inviteToken === inviteToken) ||
+        (normalizedEmail && normalizeEmail(existingUser.email) === normalizedEmail);
+
+      if (normalizedEmail && existingUser.email !== normalizedEmail) existingUser.email = normalizedEmail;
       if (inviteToken && !existingUser.inviteToken) existingUser.inviteToken = inviteToken;
+
+      if ((!matchedByIdentity && existingUser.name !== userName) || !existingUser.name) {
+        existingUser.name = userName;
+      }
+
       saveData(data);
       return { team, user: existingUser };
     }

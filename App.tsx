@@ -15,6 +15,7 @@ const App: React.FC = () => {
   const [hydrated, setHydrated] = useState(false);
 
   const STORAGE_KEY = 'retro-open-session';
+  const SESSION_PATH_REGEX = /^\/session\/([^/]+)/;
 
   useEffect(() => {
     dataService.hydrateFromServer().finally(() => setHydrated(true));
@@ -24,6 +25,8 @@ const App: React.FC = () => {
     if (!hydrated || currentTeam) return;
 
     try {
+      const pathMatch = window.location.pathname.match(SESSION_PATH_REGEX);
+      const sessionFromPath = pathMatch?.[1] || null;
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return;
       const saved = JSON.parse(raw);
@@ -44,13 +47,19 @@ const App: React.FC = () => {
 
       setCurrentTeam(team);
       setCurrentUser(user);
-      if (saved.view === 'SESSION' && saved.activeSessionId) {
-        const sessionExists = team.retrospectives.some(r => r.id === saved.activeSessionId);
+      if (sessionFromPath) {
+        const sessionExists = team.retrospectives.some(r => r.id === sessionFromPath);
         if (sessionExists) {
-          setActiveSessionId(saved.activeSessionId);
+          setActiveSessionId(sessionFromPath);
           setView('SESSION');
           return;
+        } else {
+          window.history.replaceState({}, document.title, '/');
         }
+      } else if (saved.view === 'SESSION' && saved.activeSessionId) {
+        setView('DASHBOARD');
+        setActiveSessionId(null);
+        return;
       }
 
       setView(saved.view || 'DASHBOARD');
@@ -78,6 +87,19 @@ const App: React.FC = () => {
 
     localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
   }, [currentTeam, currentUser, view, activeSessionId, hydrated]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+
+    if (view === 'SESSION' && activeSessionId) {
+      const sessionPath = `/session/${activeSessionId}`;
+      if (window.location.pathname !== sessionPath) {
+        window.history.replaceState({}, document.title, sessionPath);
+      }
+    } else if (window.location.pathname !== '/') {
+      window.history.replaceState({}, document.title, '/');
+    }
+  }, [view, activeSessionId, hydrated]);
 
   // Check for invitation link on mount
   useEffect(() => {

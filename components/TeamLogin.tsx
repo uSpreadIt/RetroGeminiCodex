@@ -30,8 +30,11 @@ const TeamLogin: React.FC<Props> = ({ onLogin, onJoin, inviteData }) => {
   const [teams, setTeams] = useState<Team[]>([]);
 
   const [name, setName] = useState('');
+  const [nameLocked, setNameLocked] = useState(false);
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+
+  const normalizeEmail = (email?: string | null) => email?.trim().toLowerCase();
 
   // Handle invitation link - auto-switch to JOIN view
   useEffect(() => {
@@ -51,6 +54,28 @@ const TeamLogin: React.FC<Props> = ({ onLogin, onJoin, inviteData }) => {
       setName(inviteData.memberName);
     }
   }, [inviteData]);
+
+  useEffect(() => {
+    if (!inviteData || !selectedTeam) {
+      setNameLocked(false);
+      return;
+    }
+
+    const normalizedEmail = normalizeEmail(inviteData.memberEmail);
+    const existingMember = selectedTeam.members.find(
+      (member) =>
+        (inviteData.memberId && member.id === inviteData.memberId) ||
+        (normalizedEmail && normalizeEmail(member.email) === normalizedEmail)
+    );
+
+    if (existingMember) {
+      setName(existingMember.name);
+      setNameLocked(true);
+    } else if (inviteData.memberName) {
+      setName(inviteData.memberName);
+      setNameLocked(false);
+    }
+  }, [inviteData, selectedTeam]);
 
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
@@ -85,9 +110,10 @@ const TeamLogin: React.FC<Props> = ({ onLogin, onJoin, inviteData }) => {
       return;
     }
     try {
+      const finalName = nameLocked ? name : name.trim();
       const { team, user } = dataService.joinTeamAsParticipant(
         selectedTeam.id,
-        name.trim(),
+        finalName,
         inviteData?.memberEmail,
         inviteData?.inviteToken
       );
@@ -214,11 +240,17 @@ const TeamLogin: React.FC<Props> = ({ onLogin, onJoin, inviteData }) => {
                                 required
                                 value={name}
                                 onChange={(e) => setName(e.target.value)}
+                                readOnly={nameLocked}
                                 className="w-full border border-slate-300 rounded-lg p-3 bg-white text-slate-900 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
                                 placeholder="e.g. John Doe"
                                 autoFocus
                             />
                         </div>
+                        {nameLocked && (
+                          <div className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded p-2">
+                            We recognized you from a previous session. Your name was kept for consistency.
+                          </div>
+                        )}
                         {inviteData?.memberEmail && (
                           <div className="text-xs text-slate-500 bg-slate-100 border border-slate-200 rounded p-2">
                             Joining as <strong>{inviteData.memberEmail}</strong>
