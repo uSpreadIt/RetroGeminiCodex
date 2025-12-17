@@ -24,6 +24,10 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!hydrated || currentTeam) return;
 
+    // If the URL contains an invite payload, skip restoring local session state.
+    const params = new URLSearchParams(window.location.search);
+    if (params.has('join')) return;
+
     try {
       const pathMatch = window.location.pathname.match(SESSION_PATH_REGEX);
       const sessionFromPath = pathMatch?.[1] || null;
