@@ -3,6 +3,7 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import fs from 'fs';
 import nodemailer from 'nodemailer';
 import Database from 'better-sqlite3';
 
@@ -27,7 +28,22 @@ app.get('/ready', (_req, res) => res.status(200).send('READY'));
 app.use(express.json({ limit: '1mb' }));
 
 // Basic persistence for teams/actions between browser sessions using SQLite
-const DATA_STORE_PATH = process.env.DATA_STORE_PATH || join(__dirname, 'data.sqlite');
+const resolveDataStorePath = () => {
+  if (process.env.DATA_STORE_PATH) return process.env.DATA_STORE_PATH;
+
+  // If the platform mounts a volume at /data, prefer storing the DB there for durability
+  const defaultVolumePath = '/data';
+  if (fs.existsSync(defaultVolumePath)) {
+    return join(defaultVolumePath, 'data.sqlite');
+  }
+
+  // Fallback to a file next to server.js (best-effort on ephemeral filesystems)
+  return join(__dirname, 'data.sqlite');
+};
+
+const DATA_STORE_PATH = resolveDataStorePath();
+fs.mkdirSync(dirname(DATA_STORE_PATH), { recursive: true });
+
 const db = new Database(DATA_STORE_PATH);
 db.pragma('journal_mode = wal');
 db.prepare(
