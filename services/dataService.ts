@@ -72,6 +72,54 @@ const saveData = (data: { teams: Team[] }) => {
   persistToServer(data);
 };
 
+const ensureSessionPlaceholder = (teamId: string, sessionId: string): RetroSession | undefined => {
+  const data = loadData();
+  const team = data.teams.find(t => t.id === teamId);
+  if (!team) return;
+
+  const existing = team.retrospectives.find(r => r.id === sessionId);
+  if (existing) return existing;
+
+  const placeholder: RetroSession = {
+    id: sessionId,
+    teamId,
+    name: 'Retrospective',
+    date: new Date().toLocaleDateString(),
+    status: 'IN_PROGRESS',
+    phase: 'ICEBREAKER',
+    participants: [],
+    discussionFocusId: null,
+    icebreakerQuestion: 'What was the highlight of your week?',
+    columns: PRESETS['start_stop_continue'],
+    settings: {
+      isAnonymous: false,
+      maxVotes: 5,
+      oneVotePerTicket: false,
+      revealBrainstorm: false,
+      revealHappiness: false,
+      revealRoti: false,
+      timerSeconds: 300,
+      timerInitial: 300,
+      timerRunning: false,
+      timerAcknowledged: false,
+    },
+    tickets: [],
+    groups: [],
+    actions: [],
+    openActionsSnapshot: [],
+    historyActionsSnapshot: [],
+    happiness: {},
+    roti: {},
+    finishedUsers: [],
+    autoFinishedUsers: [],
+  };
+
+  team.retrospectives.unshift(placeholder);
+  saveData(data);
+
+  return placeholder;
+};
+
 const hydrateFromServer = async (): Promise<void> => {
   if (hydratedFromServer) return;
   if (hydrateInFlight) return hydrateInFlight;
@@ -97,6 +145,7 @@ const hydrateFromServer = async (): Promise<void> => {
 
 export const dataService = {
   hydrateFromServer,
+  ensureSessionPlaceholder,
   createTeam: (name: string, password: string): Team => {
     const data = loadData();
     if (data.teams.some(t => t.name.toLowerCase() === name.toLowerCase())) {
@@ -212,7 +261,8 @@ export const dataService = {
         revealRoti: false,
         timerSeconds: 300, // 5 mins default
         timerInitial: 300,
-        timerRunning: false
+        timerRunning: false,
+        timerAcknowledged: false
       },
       tickets: [],
       groups: [],
@@ -383,18 +433,21 @@ export const dataService = {
 
     saveData(data);
 
+    const activeSession = sessionId ? team.retrospectives.find(r => r.id === sessionId) : undefined;
+
     const inviteData = {
       id: team.id,
       name: team.name,
       password: team.passwordHash,
       sessionId,
+      session: activeSession,
       memberId: user.id,
       memberEmail: user.email,
       inviteToken: user.inviteToken
     };
 
     const encodedData = btoa(unescape(encodeURIComponent(JSON.stringify(inviteData))));
-    const link = `${window.location.origin}?join=${encodedData}`;
+    const link = `${window.location.origin}?join=${encodeURIComponent(encodedData)}`;
 
     return { user, inviteLink: link };
   },
@@ -449,6 +502,7 @@ export const dataService = {
     // Check if team already exists by ID
     const existingById = data.teams.find(t => t.id === inviteData.id);
     if (existingById) {
+      const sessionId = inviteData.session?.id || inviteData.sessionId;
       // Update the session if provided and it doesn't exist yet
       if (inviteData.session) {
         const existingSession = existingById.retrospectives.find(r => r.id === inviteData.session!.id);
@@ -463,15 +517,14 @@ export const dataService = {
             saveData(data);
           }
         }
+      } else if (sessionId && !existingById.retrospectives.some(r => r.id === sessionId)) {
+        const placeholder = ensureSessionPlaceholder(inviteData.id, sessionId);
+        if (placeholder && inviteData.members?.length) {
+          placeholder.participants = inviteData.members;
+          saveData(data);
+        }
       }
       return existingById;
-    }
-
-    // Check if team exists by name (different ID - conflict)
-    const existingByName = data.teams.find(t => t.name.toLowerCase() === inviteData.name.toLowerCase());
-    if (existingByName) {
-      // Team name exists but with different ID - return existing
-      return existingByName;
     }
 
     // Create the team in the shared cache for this invited user
@@ -488,7 +541,41 @@ export const dataService = {
 
     const enrichedSession = inviteData.session
       ? { ...inviteData.session, participants: inviteData.session.participants ?? inviteData.members ?? [] }
-      : undefined;
+      : inviteData.sessionId
+        ? {
+            id: inviteData.sessionId,
+            teamId: inviteData.id,
+            name: 'Retrospective',
+            date: new Date().toLocaleDateString(),
+            status: 'IN_PROGRESS',
+            phase: 'ICEBREAKER',
+            participants: inviteData.members ?? [],
+            discussionFocusId: null,
+            icebreakerQuestion: 'What was the highlight of your week?',
+            columns: PRESETS['start_stop_continue'],
+            settings: {
+              isAnonymous: false,
+              maxVotes: 5,
+              oneVotePerTicket: false,
+              revealBrainstorm: false,
+              revealHappiness: false,
+              revealRoti: false,
+              timerSeconds: 300,
+              timerInitial: 300,
+              timerRunning: false,
+              timerAcknowledged: false,
+            },
+            tickets: [],
+            groups: [],
+            actions: [],
+            openActionsSnapshot: [],
+            historyActionsSnapshot: [],
+            happiness: {},
+            roti: {},
+            finishedUsers: [],
+            autoFinishedUsers: [],
+          }
+        : undefined;
 
     const newTeam: Team = {
       id: inviteData.id,
@@ -524,7 +611,13 @@ export const dataService = {
   },
 
   // Join a team as a new participant
-  joinTeamAsParticipant: (teamId: string, userName: string, email?: string, inviteToken?: string): { team: Team; user: User } => {
+  joinTeamAsParticipant: (
+    teamId: string,
+    userName: string,
+    email?: string,
+    inviteToken?: string,
+    allowCreateWithoutInvite?: boolean
+  ): { team: Team; user: User } => {
     const data = loadData();
     const team = data.teams.find(t => t.id === teamId);
     if (!team) throw new Error('Team not found');
@@ -532,12 +625,14 @@ export const dataService = {
 
     const normalizedEmail = normalizeEmail(email);
 
-    // Check if user already exists by email or invite token
-    const existingUser = team.members.find(m => {
-      if (inviteToken && m.inviteToken === inviteToken) return true;
-      if (normalizedEmail && normalizeEmail(m.email) === normalizedEmail) return true;
-      return m.name.toLowerCase() === userName.toLowerCase();
-    });
+    const existingByToken = inviteToken
+      ? team.members.find((m) => m.inviteToken === inviteToken)
+      : undefined;
+    const existingByEmail = normalizedEmail
+      ? team.members.find((m) => normalizeEmail(m.email) === normalizedEmail)
+      : undefined;
+
+    const existingUser = existingByToken || existingByEmail;
     if (existingUser) {
       const matchedByIdentity = (inviteToken && existingUser.inviteToken === inviteToken) ||
         (normalizedEmail && normalizeEmail(existingUser.email) === normalizedEmail);
@@ -560,7 +655,11 @@ export const dataService = {
       return { team, user: existingUser };
     }
 
-    // Create new participant
+    if (!existingByToken && !existingByEmail && !allowCreateWithoutInvite) {
+      throw new Error('An invitation is required to join this team.');
+    }
+
+    // Create new participant when joining via a shared invite link (QR code)
     const newUser: User = {
       id: Math.random().toString(36).substr(2, 9),
       name: userName,
@@ -570,6 +669,7 @@ export const dataService = {
       inviteToken: inviteToken || Math.random().toString(36).slice(2, 10),
       joinedBefore: true
     };
+
     team.members.push(newUser);
     saveData(data);
     return { team, user: newUser };

@@ -96,17 +96,25 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const getParticipants = () => {
-    const roster = sessionRef.current?.participants?.length
-      ? [...sessionRef.current.participants]
-      : session?.participants?.length
-      ? [...session.participants]
-      : [];
+    const roster = session?.participants?.length ? [...session.participants] : [];
 
     if (!roster.some(p => p.id === currentUser.id)) {
       roster.push(currentUser);
     }
 
-    return roster;
+    const deduped: typeof roster = [];
+    const seen = new Set<string>();
+    const seenNames = new Set<string>();
+
+    roster.forEach((p) => {
+      const nameKey = p.name.trim().toLowerCase();
+      if (seen.has(p.id) || seenNames.has(nameKey)) return;
+      seen.add(p.id);
+      seenNames.add(nameKey);
+      deduped.push(p);
+    });
+
+    return deduped;
   };
 
   const buildActionContext = (action: ActionItem, teamData: Team) => {
@@ -189,6 +197,8 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
 
     // Listen for session updates from other clients
     const unsubUpdate = syncService.onSessionUpdate((updatedSession) => {
+      if (syncService.getCurrentSessionId() !== sessionId || updatedSession.id !== sessionId) return;
+
       setSession(updatedSession);
       // Persist latest state to the shared data cache
       dataService.updateSession(team.id, updatedSession);
@@ -196,11 +206,15 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
 
     // Listen for member events
     const unsubJoin = syncService.onMemberJoined(({ userId, userName }) => {
+      if (syncService.getCurrentSessionId() !== sessionId) return;
+
       setConnectedUsers(prev => new Set([...prev, userId]));
       upsertParticipantInSession(userId, userName);
     });
 
     const unsubLeave = syncService.onMemberLeft(({ userId }) => {
+      if (syncService.getCurrentSessionId() !== sessionId) return;
+
       setConnectedUsers(prev => {
         const next = new Set(prev);
         next.delete(userId);
@@ -209,6 +223,8 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
     });
 
     const unsubRoster = syncService.onRoster((roster) => {
+      if (syncService.getCurrentSessionId() !== sessionId) return;
+
       setConnectedUsers(new Set(roster.map(r => r.id)));
       mergeRoster(roster);
     });
@@ -228,30 +244,19 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
     };
   }, [sessionId, currentUser.id, currentUser.name, currentUser.role, team.id]);
 
-  // Ensure the shared roster includes this user (and any known teammates) for cross-client visibility
+  // Ensure the shared roster includes the currently connected user only
   useEffect(() => {
     if (!session) return;
 
-    const roster = getParticipants();
-    const hasCurrentUser = roster.some(p => p.id === currentUser.id);
-    const missingTeammates = team.members.filter(m => !roster.some(p => p.id === m.id));
+    const hasCurrentUser = session.participants?.some(p => p.id === currentUser.id);
 
-    if (!hasCurrentUser || missingTeammates.length > 0 || !session.participants?.length) {
+    if (!hasCurrentUser || !session.participants?.length) {
       updateSession(s => {
-        const existing = s.participants ?? [];
-        const merged = [...existing];
+        if (!s.participants) s.participants = [];
 
-        if (!existing.some(p => p.id === currentUser.id)) {
-          merged.push(currentUser);
+        if (!s.participants.some(p => p.id === currentUser.id)) {
+          s.participants.push(currentUser);
         }
-
-        team.members.forEach(m => {
-          if (!merged.some(p => p.id === m.id)) {
-            merged.push(m);
-          }
-        });
-
-        s.participants = merged;
       });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -437,12 +442,14 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
                 s.settings.timerSeconds--;
                 if (s.settings.timerSeconds === 0) {
                     s.settings.timerRunning = false;
+                    s.settings.timerAcknowledged = false;
                     if(audioRef.current) {
                         audioRef.current.play().catch(e => console.log("Audio play failed", e));
                     }
                 }
             } else {
                 s.settings.timerRunning = false;
+                s.settings.timerAcknowledged = false;
             }
         });
       }, 1000);
@@ -452,6 +459,7 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
 
   if (!session) return <div>Session not found</div>;
   const participants = getParticipants();
+  const timerAcknowledged = session.settings.timerAcknowledged ?? false;
   const timerFinished = session.settings.timerSeconds === 0 && !session.settings.timerRunning;
 
   // --- Logic ---
@@ -545,6 +553,7 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
       s.phase = p;
       s.settings.timerRunning = false;
       s.settings.timerSeconds = s.settings.timerInitial || 300;
+      s.settings.timerAcknowledged = false;
       s.finishedUsers = [];
       s.autoFinishedUsers = [];
       setIsEditingColumns(false);
@@ -577,6 +586,12 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
       const m = Math.floor(s / 60);
       const sec = s % 60;
       return `${m}:${sec.toString().padStart(2, '0')}`;
+  };
+
+  const acknowledgeTimer = () => {
+      if (sessionRef.current?.settings.timerSeconds === 0 && !sessionRef.current.settings.timerAcknowledged) {
+          updateSession((s) => { s.settings.timerAcknowledged = true; });
+      }
   };
 
   // --- Drag & Drop Helpers ---
@@ -969,18 +984,22 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
                 ))}
             </div>
         </div>
-        <div className="flex items-center bg-slate-100 rounded-lg px-3 py-1 mr-4 cursor-pointer hover:bg-slate-200 transition">
+        <div
+            className="flex items-center bg-slate-100 rounded-lg px-3 py-1 mr-4 cursor-pointer hover:bg-slate-200 transition"
+            onClick={acknowledgeTimer}
+        >
              {!isEditingTimer ? (
                  <>
-                    <span className={`font-mono font-bold text-lg ${timerFinished ? 'text-red-500 animate-bounce' : session.settings.timerSeconds < 60 ? 'text-red-500' : 'text-slate-700'}`}>{formatTime(session.settings.timerSeconds)}</span>
+                    <span className={`font-mono font-bold text-lg ${timerFinished && !timerAcknowledged ? 'text-red-500 animate-bounce' : session.settings.timerSeconds < 60 ? 'text-red-500' : 'text-slate-700'}`}>{formatTime(session.settings.timerSeconds)}</span>
                     {isFacilitator && (
-                        <button onClick={(e) => { e.stopPropagation(); updateSession(s => s.settings.timerRunning = !s.settings.timerRunning); }} className="ml-2 text-slate-500 hover:text-indigo-600">
+                        <button onClick={(e) => { e.stopPropagation(); acknowledgeTimer(); updateSession(s => { s.settings.timerRunning = !s.settings.timerRunning; if (s.settings.timerRunning) s.settings.timerAcknowledged = false; }); }} className="ml-2 text-slate-500 hover:text-indigo-600">
                             <span className="material-symbols-outlined text-lg">{session.settings.timerRunning ? 'pause' : 'play_arrow'}</span>
                         </button>
                     )}
                     {isFacilitator && (
                         <button onClick={(e) => {
                             e.stopPropagation();
+                            acknowledgeTimer();
                             setTimerEditMin(Math.floor(session.settings.timerSeconds / 60));
                             setTimerEditSec(session.settings.timerSeconds % 60);
                             setIsEditingTimer(true);
@@ -1011,6 +1030,7 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
                             s.settings.timerSeconds = (timerEditMin * 60) + timerEditSec;
                             s.settings.timerInitial = (timerEditMin * 60) + timerEditSec;
                             s.settings.timerRunning = false;
+                            s.settings.timerAcknowledged = false;
                         });
                         setIsEditingTimer(false);
                      }} className="bg-emerald-500 text-white rounded p-2 hover:bg-emerald-600 shadow"><span className="material-symbols-outlined text-xl">check</span></button>

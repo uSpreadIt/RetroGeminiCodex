@@ -102,6 +102,10 @@ class SyncService {
   }
 
   joinSession(sessionId: string, userId: string, userName: string) {
+    if (this.currentSessionId && this.currentSessionId !== sessionId) {
+      this.leaveSession();
+    }
+
     this.currentSessionId = sessionId;
 
     const joinData = { sessionId, userId, userName };
@@ -119,6 +123,17 @@ class SyncService {
   }
 
   leaveSession() {
+    const sessionId = this.currentSessionId;
+    if (!sessionId) return;
+
+    if (this.socket?.connected) {
+      this.socket.emit('leave-session', { sessionId });
+    }
+
+    if (this.pendingJoin?.sessionId === sessionId) {
+      this.pendingJoin = null;
+    }
+
     this.currentSessionId = null;
   }
 
@@ -166,6 +181,10 @@ class SyncService {
 
   isConnected() {
     return this.socket?.connected || false;
+  }
+
+  getCurrentSessionId() {
+    return this.currentSessionId;
   }
 }
 

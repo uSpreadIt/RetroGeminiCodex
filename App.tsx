@@ -131,9 +131,14 @@ const App: React.FC = () => {
     const joinParam = params.get('join');
     if (joinParam) {
       try {
-        // Decode UTF-8 encoded base64 string
-        const decoded = JSON.parse(decodeURIComponent(escape(atob(joinParam))));
+        // Decode UTF-8 encoded base64 string. Replace spaces (converted from +) for legacy links
+        // and support URL-encoded payloads for QR codes.
+        const normalized = decodeURIComponent(joinParam.replace(/\s/g, '+'));
+        const decoded = JSON.parse(decodeURIComponent(escape(atob(normalized))));
         if (decoded.id && decoded.name && decoded.password) {
+          // Clear any previously persisted session state so invitees cannot be
+          // redirected back into an older retrospective from the same browser.
+          localStorage.removeItem(STORAGE_KEY);
           setCurrentTeam(null);
           setCurrentUser(null);
           setInviteData(decoded);
@@ -150,11 +155,23 @@ const App: React.FC = () => {
     }
   }, []);
 
+  const ensureSessionForInvite = (team: Team, preferredSessionId?: string | null) => {
+    if (!preferredSessionId) return null;
+
+    const existing = team.retrospectives.find(r => r.id === preferredSessionId);
+    if (existing) return existing.id;
+
+    const placeholder = dataService.ensureSessionPlaceholder(team.id, preferredSessionId);
+    return placeholder?.id ?? null;
+  };
+
   const openActiveSessionIfParticipant = (team: Team, fallbackSessionId?: string | null) => {
     // If user is a participant, automatically join the active retrospective
     // Prefer the invited session when provided
-    const active = fallbackSessionId
-      ? team.retrospectives.find(r => r.id === fallbackSessionId)
+    const invitedSessionId = ensureSessionForInvite(team, fallbackSessionId);
+
+    const active = invitedSessionId
+      ? team.retrospectives.find(r => r.id === invitedSessionId)
       : team.retrospectives.find(r => r.status === 'IN_PROGRESS');
 
     if (active) {
