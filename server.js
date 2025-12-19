@@ -104,12 +104,43 @@ app.use(express.static(join(__dirname, 'dist')));
 const sessions = new Map(); // sessionId -> session data
 const teamMembers = new Map(); // sessionId -> Map of socketId -> user info
 
+const leaveCurrentSession = (socket) => {
+  const sessionId = socket.sessionId;
+  if (!sessionId) return;
+
+  console.log(`[Server] ${socket.userName || 'Unknown'} leaving session ${sessionId}`);
+  socket.leave(sessionId);
+
+  const members = teamMembers.get(sessionId);
+  if (members) {
+    members.delete(socket.id);
+
+    const room = io.sockets.adapter.rooms.get(sessionId);
+    console.log(`[Server] Session ${sessionId} now has ${room?.size || 0} connected clients`);
+
+    socket.to(sessionId).emit('member-left', {
+      userId: socket.userId,
+      userName: socket.userName
+    });
+
+    const roster = Array.from(members.values());
+    io.to(sessionId).emit('member-roster', roster);
+  }
+
+  socket.sessionId = null;
+};
+
 io.on('connection', (socket) => {
   console.log('[Server] Client connected:', socket.id);
 
   // Join a session room
   socket.on('join-session', ({ sessionId, userId, userName }) => {
     console.log(`[Server] User ${userName} (${userId}) joining session ${sessionId}`);
+
+    // Leave any previously joined session to avoid cross-room events
+    if (socket.sessionId && socket.sessionId !== sessionId) {
+      leaveCurrentSession(socket);
+    }
 
     socket.join(sessionId);
     socket.sessionId = sessionId;
@@ -140,6 +171,11 @@ io.on('connection', (socket) => {
     socket.to(sessionId).emit('member-joined', { userId, userName });
   });
 
+  // Allow clients to explicitly leave
+  socket.on('leave-session', () => {
+    leaveCurrentSession(socket);
+  });
+
   // Update session data
   socket.on('update-session', (sessionData) => {
     const sessionId = socket.sessionId;
@@ -162,26 +198,9 @@ io.on('connection', (socket) => {
 
   // Handle disconnection
   socket.on('disconnect', () => {
-    const sessionId = socket.sessionId;
     console.log(`[Server] Client disconnected: ${socket.id} (${socket.userName || 'unknown'})`);
 
-    if (sessionId && teamMembers.has(sessionId)) {
-      teamMembers.get(sessionId).delete(socket.id);
-
-      // Log remaining members
-      const room = io.sockets.adapter.rooms.get(sessionId);
-      console.log(`[Server] Session ${sessionId} now has ${room?.size || 0} connected clients`);
-
-      // Notify others
-      socket.to(sessionId).emit('member-left', {
-        userId: socket.userId,
-        userName: socket.userName
-      });
-
-      // Broadcast the updated roster
-      const roster = Array.from((teamMembers.get(sessionId) || new Map()).values());
-      io.to(sessionId).emit('member-roster', roster);
-    }
+    leaveCurrentSession(socket);
   });
 });
 

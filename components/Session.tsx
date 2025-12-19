@@ -197,6 +197,8 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
 
     // Listen for session updates from other clients
     const unsubUpdate = syncService.onSessionUpdate((updatedSession) => {
+      if (syncService.getCurrentSessionId() !== sessionId || updatedSession.id !== sessionId) return;
+
       setSession(updatedSession);
       // Persist latest state to the shared data cache
       dataService.updateSession(team.id, updatedSession);
@@ -204,11 +206,15 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
 
     // Listen for member events
     const unsubJoin = syncService.onMemberJoined(({ userId, userName }) => {
+      if (syncService.getCurrentSessionId() !== sessionId) return;
+
       setConnectedUsers(prev => new Set([...prev, userId]));
       upsertParticipantInSession(userId, userName);
     });
 
     const unsubLeave = syncService.onMemberLeft(({ userId }) => {
+      if (syncService.getCurrentSessionId() !== sessionId) return;
+
       setConnectedUsers(prev => {
         const next = new Set(prev);
         next.delete(userId);
@@ -217,6 +223,8 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
     });
 
     const unsubRoster = syncService.onRoster((roster) => {
+      if (syncService.getCurrentSessionId() !== sessionId) return;
+
       setConnectedUsers(new Set(roster.map(r => r.id)));
       mergeRoster(roster);
     });
