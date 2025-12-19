@@ -31,11 +31,14 @@ const InviteModal: React.FC<Props> = ({ team, activeSession, onClose, onLogout }
     name: string;
     password: string;
     sessionId?: string;
+    session?: RetroSession;
   } = {
     id: team.id,
     name: team.name,
     password: team.passwordHash,
     sessionId: activeSession?.id,
+    // Embed the active session snapshot so guests can reliably join the right room
+    session: activeSession,
   };
 
   const encodedData = btoa(unescape(encodeURIComponent(JSON.stringify(inviteData))));

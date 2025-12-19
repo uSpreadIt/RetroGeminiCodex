@@ -384,11 +384,14 @@ export const dataService = {
 
     saveData(data);
 
+    const activeSession = sessionId ? team.retrospectives.find(r => r.id === sessionId) : undefined;
+
     const inviteData = {
       id: team.id,
       name: team.name,
       password: team.passwordHash,
       sessionId,
+      session: activeSession,
       memberId: user.id,
       memberEmail: user.email,
       inviteToken: user.inviteToken
@@ -450,6 +453,7 @@ export const dataService = {
     // Check if team already exists by ID
     const existingById = data.teams.find(t => t.id === inviteData.id);
     if (existingById) {
+      const sessionId = inviteData.session?.id || inviteData.sessionId;
       // Update the session if provided and it doesn't exist yet
       if (inviteData.session) {
         const existingSession = existingById.retrospectives.find(r => r.id === inviteData.session!.id);
@@ -464,6 +468,42 @@ export const dataService = {
             saveData(data);
           }
         }
+      } else if (sessionId && !existingById.retrospectives.some(r => r.id === sessionId)) {
+        // Seed a lightweight placeholder session so guests cannot fall back to stale ones
+        existingById.retrospectives.unshift({
+          id: sessionId,
+          teamId: inviteData.id,
+          name: 'Retrospective',
+          date: new Date().toLocaleDateString(),
+          status: 'IN_PROGRESS',
+          phase: 'ICEBREAKER',
+          participants: inviteData.members ?? [],
+          discussionFocusId: null,
+          icebreakerQuestion: 'What was the highlight of your week?',
+          columns: PRESETS['start_stop_continue'],
+          settings: {
+            isAnonymous: false,
+            maxVotes: 5,
+            oneVotePerTicket: false,
+            revealBrainstorm: false,
+            revealHappiness: false,
+            revealRoti: false,
+            timerSeconds: 300,
+            timerInitial: 300,
+            timerRunning: false,
+            timerAcknowledged: false,
+          },
+          tickets: [],
+          groups: [],
+          actions: [],
+          openActionsSnapshot: [],
+          historyActionsSnapshot: [],
+          happiness: {},
+          roti: {},
+          finishedUsers: [],
+          autoFinishedUsers: [],
+        });
+        saveData(data);
       }
       return existingById;
     }
@@ -482,7 +522,41 @@ export const dataService = {
 
     const enrichedSession = inviteData.session
       ? { ...inviteData.session, participants: inviteData.session.participants ?? inviteData.members ?? [] }
-      : undefined;
+      : inviteData.sessionId
+        ? {
+            id: inviteData.sessionId,
+            teamId: inviteData.id,
+            name: 'Retrospective',
+            date: new Date().toLocaleDateString(),
+            status: 'IN_PROGRESS',
+            phase: 'ICEBREAKER',
+            participants: inviteData.members ?? [],
+            discussionFocusId: null,
+            icebreakerQuestion: 'What was the highlight of your week?',
+            columns: PRESETS['start_stop_continue'],
+            settings: {
+              isAnonymous: false,
+              maxVotes: 5,
+              oneVotePerTicket: false,
+              revealBrainstorm: false,
+              revealHappiness: false,
+              revealRoti: false,
+              timerSeconds: 300,
+              timerInitial: 300,
+              timerRunning: false,
+              timerAcknowledged: false,
+            },
+            tickets: [],
+            groups: [],
+            actions: [],
+            openActionsSnapshot: [],
+            historyActionsSnapshot: [],
+            happiness: {},
+            roti: {},
+            finishedUsers: [],
+            autoFinishedUsers: [],
+          }
+        : undefined;
 
     const newTeam: Team = {
       id: inviteData.id,
