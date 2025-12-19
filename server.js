@@ -28,23 +28,50 @@ app.get('/ready', (_req, res) => res.status(200).send('READY'));
 app.use(express.json({ limit: '1mb' }));
 
 // Basic persistence for teams/actions between browser sessions using SQLite
-const resolveDataStorePath = () => {
-  if (process.env.DATA_STORE_PATH) return process.env.DATA_STORE_PATH;
+const resolveDataStoreCandidates = () => {
+  const candidates = [];
 
-  // If the platform mounts a volume at /data, prefer storing the DB there for durability
-  const defaultVolumePath = '/data';
-  if (fs.existsSync(defaultVolumePath)) {
-    return join(defaultVolumePath, 'data.sqlite');
+  if (process.env.DATA_STORE_PATH) {
+    candidates.push(process.env.DATA_STORE_PATH);
   }
 
-  // Fallback to a file next to server.js (best-effort on ephemeral filesystems)
-  return join(__dirname, 'data.sqlite');
+  // Prefer a mounted volume when present (Railway/OpenShift)
+  candidates.push('/data/data.sqlite');
+
+  // As a last resort, write to /tmp (ephemeral but writable)
+  candidates.push(join('/tmp', 'data.sqlite'));
+
+  // Final fallback next to server.js (may be read-only in some images)
+  candidates.push(join(__dirname, 'data.sqlite'));
+
+  return candidates;
 };
 
-const DATA_STORE_PATH = resolveDataStorePath();
-fs.mkdirSync(dirname(DATA_STORE_PATH), { recursive: true });
+const openDatabase = () => {
+  const errors = [];
 
-const db = new Database(DATA_STORE_PATH);
+  for (const candidate of resolveDataStoreCandidates()) {
+    try {
+      fs.mkdirSync(dirname(candidate), { recursive: true });
+      const database = new Database(candidate);
+      console.info(`[Server] Using SQLite store at ${candidate}`);
+      return database;
+    } catch (err) {
+      errors.push({ pathTried: candidate, message: err?.message });
+      console.warn(`[Server] Failed to open SQLite store at ${candidate}: ${err?.message}`);
+    }
+  }
+
+  const error = new Error(
+    `Unable to open SQLite database. Paths tried: ${errors
+      .map((e) => `${e.pathTried} (${e.message})`)
+      .join('; ')}`
+  );
+  error.name = 'SQLiteInitError';
+  throw error;
+};
+
+const db = openDatabase();
 db.pragma('journal_mode = wal');
 db.prepare(
   `CREATE TABLE IF NOT EXISTS kv_store (
