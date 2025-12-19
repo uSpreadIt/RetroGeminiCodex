@@ -468,13 +468,6 @@ export const dataService = {
       return existingById;
     }
 
-    // Check if team exists by name (different ID - conflict)
-    const existingByName = data.teams.find(t => t.name.toLowerCase() === inviteData.name.toLowerCase());
-    if (existingByName) {
-      // Team name exists but with different ID - return existing
-      return existingByName;
-    }
-
     // Create the team in the shared cache for this invited user
     const invitedMember = inviteData.memberId
       ? {
