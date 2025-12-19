@@ -150,11 +150,23 @@ const App: React.FC = () => {
     }
   }, []);
 
+  const ensureSessionForInvite = (team: Team, preferredSessionId?: string | null) => {
+    if (!preferredSessionId) return null;
+
+    const existing = team.retrospectives.find(r => r.id === preferredSessionId);
+    if (existing) return existing.id;
+
+    const placeholder = dataService.ensureSessionPlaceholder(team.id, preferredSessionId);
+    return placeholder?.id ?? null;
+  };
+
   const openActiveSessionIfParticipant = (team: Team, fallbackSessionId?: string | null) => {
     // If user is a participant, automatically join the active retrospective
     // Prefer the invited session when provided
-    const active = fallbackSessionId
-      ? team.retrospectives.find(r => r.id === fallbackSessionId)
+    const invitedSessionId = ensureSessionForInvite(team, fallbackSessionId);
+
+    const active = invitedSessionId
+      ? team.retrospectives.find(r => r.id === invitedSessionId)
       : team.retrospectives.find(r => r.status === 'IN_PROGRESS');
 
     if (active) {

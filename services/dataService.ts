@@ -72,6 +72,54 @@ const saveData = (data: { teams: Team[] }) => {
   persistToServer(data);
 };
 
+const ensureSessionPlaceholder = (teamId: string, sessionId: string): RetroSession | undefined => {
+  const data = loadData();
+  const team = data.teams.find(t => t.id === teamId);
+  if (!team) return;
+
+  const existing = team.retrospectives.find(r => r.id === sessionId);
+  if (existing) return existing;
+
+  const placeholder: RetroSession = {
+    id: sessionId,
+    teamId,
+    name: 'Retrospective',
+    date: new Date().toLocaleDateString(),
+    status: 'IN_PROGRESS',
+    phase: 'ICEBREAKER',
+    participants: [],
+    discussionFocusId: null,
+    icebreakerQuestion: 'What was the highlight of your week?',
+    columns: PRESETS['start_stop_continue'],
+    settings: {
+      isAnonymous: false,
+      maxVotes: 5,
+      oneVotePerTicket: false,
+      revealBrainstorm: false,
+      revealHappiness: false,
+      revealRoti: false,
+      timerSeconds: 300,
+      timerInitial: 300,
+      timerRunning: false,
+      timerAcknowledged: false,
+    },
+    tickets: [],
+    groups: [],
+    actions: [],
+    openActionsSnapshot: [],
+    historyActionsSnapshot: [],
+    happiness: {},
+    roti: {},
+    finishedUsers: [],
+    autoFinishedUsers: [],
+  };
+
+  team.retrospectives.unshift(placeholder);
+  saveData(data);
+
+  return placeholder;
+};
+
 const hydrateFromServer = async (): Promise<void> => {
   if (hydratedFromServer) return;
   if (hydrateInFlight) return hydrateInFlight;
@@ -97,6 +145,7 @@ const hydrateFromServer = async (): Promise<void> => {
 
 export const dataService = {
   hydrateFromServer,
+  ensureSessionPlaceholder,
   createTeam: (name: string, password: string): Team => {
     const data = loadData();
     if (data.teams.some(t => t.name.toLowerCase() === name.toLowerCase())) {
@@ -469,41 +518,11 @@ export const dataService = {
           }
         }
       } else if (sessionId && !existingById.retrospectives.some(r => r.id === sessionId)) {
-        // Seed a lightweight placeholder session so guests cannot fall back to stale ones
-        existingById.retrospectives.unshift({
-          id: sessionId,
-          teamId: inviteData.id,
-          name: 'Retrospective',
-          date: new Date().toLocaleDateString(),
-          status: 'IN_PROGRESS',
-          phase: 'ICEBREAKER',
-          participants: inviteData.members ?? [],
-          discussionFocusId: null,
-          icebreakerQuestion: 'What was the highlight of your week?',
-          columns: PRESETS['start_stop_continue'],
-          settings: {
-            isAnonymous: false,
-            maxVotes: 5,
-            oneVotePerTicket: false,
-            revealBrainstorm: false,
-            revealHappiness: false,
-            revealRoti: false,
-            timerSeconds: 300,
-            timerInitial: 300,
-            timerRunning: false,
-            timerAcknowledged: false,
-          },
-          tickets: [],
-          groups: [],
-          actions: [],
-          openActionsSnapshot: [],
-          historyActionsSnapshot: [],
-          happiness: {},
-          roti: {},
-          finishedUsers: [],
-          autoFinishedUsers: [],
-        });
-        saveData(data);
+        const placeholder = ensureSessionPlaceholder(inviteData.id, sessionId);
+        if (placeholder && inviteData.members?.length) {
+          placeholder.participants = inviteData.members;
+          saveData(data);
+        }
       }
       return existingById;
     }
