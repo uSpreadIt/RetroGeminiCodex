@@ -39,7 +39,7 @@ const InviteModal: React.FC<Props> = ({ team, activeSession, onClose, onLogout }
   };
 
   const encodedData = btoa(unescape(encodeURIComponent(JSON.stringify(inviteData))));
-  const link = `${window.location.origin}?join=${encodedData}`;
+  const link = `${window.location.origin}?join=${encodeURIComponent(encodedData)}`;
   const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(link)}`;
 
   const emailList = useMemo(() => {

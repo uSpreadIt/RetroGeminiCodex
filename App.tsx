@@ -131,8 +131,10 @@ const App: React.FC = () => {
     const joinParam = params.get('join');
     if (joinParam) {
       try {
-        // Decode UTF-8 encoded base64 string
-        const decoded = JSON.parse(decodeURIComponent(escape(atob(joinParam))));
+        // Decode UTF-8 encoded base64 string. Replace spaces (converted from +) for legacy links
+        // and support URL-encoded payloads for QR codes.
+        const normalized = decodeURIComponent(joinParam.replace(/\s/g, '+'));
+        const decoded = JSON.parse(decodeURIComponent(escape(atob(normalized))));
         if (decoded.id && decoded.name && decoded.password) {
           setCurrentTeam(null);
           setCurrentUser(null);

@@ -447,7 +447,7 @@ export const dataService = {
     };
 
     const encodedData = btoa(unescape(encodeURIComponent(JSON.stringify(inviteData))));
-    const link = `${window.location.origin}?join=${encodedData}`;
+    const link = `${window.location.origin}?join=${encodeURIComponent(encodedData)}`;
 
     return { user, inviteLink: link };
   },
