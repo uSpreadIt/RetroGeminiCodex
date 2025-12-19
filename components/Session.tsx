@@ -57,6 +57,7 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
 
   const [showInvite, setShowInvite] = useState(false);
   const [draggedTicket, setDraggedTicket] = useState<Ticket | null>(null);
+  const [isTouchDragging, setIsTouchDragging] = useState(false);
 
   // Drag Target State for explicit visual cues
   const [dragTarget, setDragTarget] = useState<{ type: 'COLUMN' | 'ITEM', id: string } | null>(null);
@@ -589,10 +590,23 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
   };
 
   // --- Drag & Drop ---
+  const resetDragState = () => {
+      setDraggedTicket(null);
+      setIsTouchDragging(false);
+      setDragTarget(null);
+  };
+
   const handleDragStart = (e: React.DragEvent, ticket: Ticket) => {
       setDraggedTicket(ticket);
+      setIsTouchDragging(false);
       e.dataTransfer.effectAllowed = 'move';
       e.stopPropagation();
+  };
+
+  const handleTouchStart = (ticket: Ticket) => {
+      setDraggedTicket(ticket);
+      setIsTouchDragging(true);
+      setDragTarget({ type: 'ITEM', id: ticket.id });
   };
 
   const handleDragOverColumn = (e: React.DragEvent, colId: string) => {
@@ -608,8 +622,7 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
       setDragTarget({ type: 'ITEM', id: itemId });
   };
 
-  const handleDropOnColumn = (e: React.DragEvent, colId: string) => {
-      e.preventDefault();
+  const performDropOnColumn = (colId: string) => {
       setDragTarget(null);
       if(!draggedTicket) return;
       if(session.phase !== 'GROUP') return;
@@ -622,12 +635,20 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
               t.groupId = null; // Explicitly ungroup
           }
       });
-      setDraggedTicket(null);
+      resetDragState();
   };
 
-  const handleDropOnTicket = (e: React.DragEvent, targetTicket: Ticket) => {
+  const handleDropOnColumn = (e: React.DragEvent, colId: string) => {
       e.preventDefault();
-      e.stopPropagation();
+      performDropOnColumn(colId);
+  };
+
+  const dropOnColumnByTouch = (colId: string) => {
+      if (!isTouchDragging) return;
+      performDropOnColumn(colId);
+  };
+
+  const performDropOnTicket = (targetTicket: Ticket) => {
       setDragTarget(null);
       if(!draggedTicket || draggedTicket.id === targetTicket.id) return;
       if(session.phase !== 'GROUP') return;
@@ -646,14 +667,14 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
               }
           } else {
               const newGroupId = Math.random().toString(36).substr(2,9);
-              s.groups.push({ id: newGroupId, title: '', colId: targetTicket.colId, votes: [] }); 
-              
+              s.groups.push({ id: newGroupId, title: '', colId: targetTicket.colId, votes: [] });
+
               const t1 = s.tickets.find(x => x.id === targetTicket.id);
               if(t1) {
                   t1.groupId = newGroupId;
                   t1.votes = []; // CRITICAL: Clear votes on the target ticket too when creating a new group
               }
-              
+
               if(draggedT) {
                   draggedT.groupId = newGroupId;
                   draggedT.colId = targetTicket.colId;
@@ -661,16 +682,20 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
               setFocusGroupId(newGroupId);
           }
       });
-      setDraggedTicket(null);
+      resetDragState();
   };
 
-  const handleDropOnGroup = (e: React.DragEvent, targetGroup: Group) => {
+  const handleDropOnTicket = (e: React.DragEvent, targetTicket: Ticket) => {
       e.preventDefault();
       e.stopPropagation();
+      performDropOnTicket(targetTicket);
+  };
+
+  const performDropOnGroup = (targetGroup: Group) => {
       setDragTarget(null);
       if(!draggedTicket) return;
       if(session.phase !== 'GROUP') return;
-      
+
       updateSession(s => {
           const t = s.tickets.find(x => x.id === draggedTicket.id);
           if(t) {
@@ -680,7 +705,13 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
               t.votes = [];
           }
       });
-      setDraggedTicket(null);
+      resetDragState();
+  };
+
+  const handleDropOnGroup = (e: React.DragEvent, targetGroup: Group) => {
+      e.preventDefault();
+      e.stopPropagation();
+      performDropOnGroup(targetGroup);
   };
 
   // --- Discuss & Proposals ---
@@ -763,13 +794,24 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
       const isDragTarget = mode === 'GROUP' && dragTarget?.type === 'ITEM' && dragTarget.id === t.id && draggedTicket?.id !== t.id;
 
       return (
-        <div 
-            key={t.id} 
+        <div
+            key={t.id}
             draggable={mode === 'GROUP'}
             onDragStart={(e) => handleDragStart(e, t)}
             onDragOver={(e) => mode === 'GROUP' ? handleDragOverItem(e, t.id) : undefined}
             onDrop={(e) => handleDropOnTicket(e, t)}
-            className={`bg-white p-3 rounded shadow-sm border group relative mb-2 transition-all 
+            onTouchStart={() => mode === 'GROUP' ? handleTouchStart(t) : undefined}
+            onClick={(e) => {
+                if (mode !== 'GROUP' || !isTouchDragging) return;
+                const target = e.target as HTMLElement;
+                if (target.closest('button') || target.closest('textarea') || target.closest('input')) return;
+                if (draggedTicket?.id === t.id) {
+                    resetDragState();
+                } else {
+                    performDropOnTicket(t);
+                }
+            }}
+            className={`bg-white p-3 rounded shadow-sm border group relative mb-2 transition-all
                 ${mode === 'GROUP' ? 'cursor-grab active:cursor-grabbing' : ''}
                 ${isDragTarget ? 'ring-4 ring-indigo-300 border-indigo-500 z-20 scale-105' : 'border-slate-200'}
             `}
@@ -1268,9 +1310,20 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
           </div>
       );
 
+      const touchSelectionActive = mode === 'GROUP' && isTouchDragging && !!draggedTicket;
+
       return (
         <div className="flex flex-col h-full overflow-hidden">
             {renderPhaseActionBar()}
+            {mode === 'GROUP' && (
+                <div className="px-6 pt-3 md:hidden">
+                    <div className={`text-xs rounded-lg border p-3 shadow-sm ${touchSelectionActive ? 'border-indigo-300 bg-indigo-50 text-indigo-700' : 'border-slate-200 bg-white text-slate-600'}`}>
+                        {touchSelectionActive
+                            ? `Carte sélectionnée. Touchez une autre carte, un groupe ou une colonne pour la déplacer. Touchez à nouveau la carte sélectionnée pour annuler.`
+                            : 'Astuce tactile : touchez une carte pour la sélectionner, puis une autre carte ou un groupe pour la déplacer.'}
+                    </div>
+                </div>
+            )}
             <div className="flex-grow overflow-x-auto bg-slate-50 p-6 flex space-x-6 items-start h-auto min-h-0 justify-start">
                 {session.columns.map(col => {
                     let tickets = session.tickets.filter(t => t.colId === col.id && !t.groupId);
@@ -1364,13 +1417,19 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
                                     const isGroupDragTarget = mode === 'GROUP' && dragTarget?.type === 'ITEM' && dragTarget.id === g.id;
 
                                     return (
-                                        <div 
-                                            key={g.id} 
+                                        <div
+                                            key={g.id}
                                             className={`bg-indigo-50/50 p-3 rounded-xl border-2 relative group-container mb-3 transition-all
                                                 ${isGroupDragTarget ? 'border-indigo-500 ring-4 ring-indigo-200 z-20 scale-105' : 'border-dashed border-indigo-300'}
                                             `}
                                             onDragOver={(e) => mode === 'GROUP' ? handleDragOverItem(e, g.id) : undefined}
                                             onDrop={(e) => handleDropOnGroup(e, g)}
+                                            onClick={(e) => {
+                                                if (mode !== 'GROUP' || !isTouchDragging) return;
+                                                const target = e.target as HTMLElement;
+                                                if (target.closest('button') || target.closest('textarea') || target.closest('input')) return;
+                                                performDropOnGroup(g);
+                                            }}
                                         >
                                             {isGroupDragTarget && (
                                                 <div className="absolute inset-0 bg-indigo-100/80 z-20 flex items-center justify-center rounded-xl pointer-events-none">
@@ -1444,6 +1503,15 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
                                         const canVote = votesLeft > 0 && (!session.settings.oneVotePerTicket || myVotesOnThis === 0);
                                         return renderTicketCard(t, mode, canVote, myVotesOnThis, false);
                                     })
+                                )}
+
+                                {mode === 'GROUP' && isTouchDragging && draggedTicket && (
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); dropOnColumnByTouch(col.id); }}
+                                        className="w-full py-2 px-3 text-xs font-bold text-indigo-700 bg-white border-2 border-indigo-200 rounded-lg shadow-sm hover:border-indigo-400 transition"
+                                    >
+                                        Déplacer la carte sélectionnée ici
+                                    </button>
                                 )}
                             </div>
                         </div>
