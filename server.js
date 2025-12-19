@@ -3,8 +3,8 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
-import fs from 'fs';
 import nodemailer from 'nodemailer';
+import Database from 'better-sqlite3';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -26,9 +26,47 @@ app.get('/ready', (_req, res) => res.status(200).send('READY'));
 
 app.use(express.json({ limit: '1mb' }));
 
-// Basic persistence for teams/actions between browser sessions
-const DATA_FILE = join(__dirname, 'data.json');
-let persistedData = { teams: [] };
+// Basic persistence for teams/actions between browser sessions using SQLite
+const DATA_STORE_PATH = process.env.DATA_STORE_PATH || join(__dirname, 'data.sqlite');
+const db = new Database(DATA_STORE_PATH);
+db.pragma('journal_mode = wal');
+db.prepare(
+  `CREATE TABLE IF NOT EXISTS kv_store (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`
+).run();
+
+const loadPersistedData = () => {
+  try {
+    const row = db.prepare('SELECT value FROM kv_store WHERE key = ?').get('retro-data');
+    if (row?.value) {
+      return JSON.parse(row.value);
+    }
+  } catch (err) {
+    console.warn('[Server] Failed to load persisted data store', err);
+  }
+  return { teams: [] };
+};
+
+const savePersistedData = (data) => {
+  try {
+    const payload = JSON.stringify(data ?? { teams: [] });
+    db.prepare(
+      `INSERT INTO kv_store (key, value, updated_at)
+       VALUES (?, ?, CURRENT_TIMESTAMP)
+       ON CONFLICT(key) DO UPDATE SET
+         value = excluded.value,
+         updated_at = CURRENT_TIMESTAMP`
+    ).run('retro-data', payload);
+  } catch (err) {
+    console.error('[Server] Failed to write persisted data store', err);
+    throw err;
+  }
+};
+
+let persistedData = loadPersistedData();
 
 const smtpEnabled = !!process.env.SMTP_HOST;
 const mailer = smtpEnabled
@@ -42,14 +80,6 @@ const mailer = smtpEnabled
     })
   : null;
 
-try {
-  if (fs.existsSync(DATA_FILE)) {
-    persistedData = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-  }
-} catch (err) {
-  console.warn('[Server] Failed to load persisted data file', err);
-}
-
 app.get('/api/data', (_req, res) => {
   res.json(persistedData);
 });
@@ -57,7 +87,7 @@ app.get('/api/data', (_req, res) => {
 app.post('/api/data', (req, res) => {
   try {
     persistedData = req.body ?? { teams: [] };
-    fs.writeFileSync(DATA_FILE, JSON.stringify(persistedData));
+    savePersistedData(persistedData);
     res.status(204).end();
   } catch (err) {
     console.error('[Server] Failed to persist data', err);

@@ -14,7 +14,7 @@ Self-hosted, collaborative retrospectives for product and engineering teams. The
 ## Architecture and data
 - **Frontend:** React + Vite + Tailwind CSS
 - **Backend:** Express + Socket.IO (see `server.js`)
-- **Persistence:** All teams, retrospectives, and actions are stored server-side in `data.json`; the UI does not depend on browser storage.
+- **Persistence:** Teams, retrospectives, and actions are stored server-side in a lightweight SQLite data store. Point `DATA_STORE_PATH` to a mounted volume for durability on platforms like Railway or OpenShift.
 
 ## Getting started locally
 ### Prerequisites
@@ -43,6 +43,12 @@ Vite proxies `/api` and `/socket.io` requests to the backend so data stays in sy
 npm run build
 npm run start   # serves the built app and API from Express on port 3000
 ```
+
+### Persistence configuration (Railway/OpenShift)
+- The API uses SQLite for persistence. By default the database file is created next to `server.js` as `data.sqlite`.
+- Override the location with the `DATA_STORE_PATH` environment variable, and mount a persistent volume at that path to survive restarts/redeployments.
+  - **Railway:** add a Persistent Volume and set `DATA_STORE_PATH=/data/data.sqlite` with the volume mounted at `/data`.
+  - **OpenShift/Kubernetes:** create a PVC and mount it (e.g., to `/data`), then set `DATA_STORE_PATH=/data/data.sqlite` in the deployment manifest.
 
 ### Docker Compose
 - **Development:** `docker-compose up dev` (Vite on port 5173)
