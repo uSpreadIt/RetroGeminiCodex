@@ -821,6 +821,11 @@ export const dataService = {
     const check = team.healthChecks?.find(h => h.id === healthCheckId);
     if (!check) throw new Error('Health check not found');
 
+    // Only allow collecting ratings during the survey phase
+    if (check.phase !== 'SURVEY') {
+      return;
+    }
+
     const existing = check.responses.find(r => r.userId === userId);
     if (existing) {
       existing.ratings = ratings;

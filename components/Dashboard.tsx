@@ -171,6 +171,7 @@ const Dashboard: React.FC<Props> = ({ team, currentUser, onOpenSession, onRefres
   };
 
   const handleStartHealth = () => {
+    if (!isAdmin) return;
     const modelToUse = healthModelId || healthModels[0]?.id;
     if (!modelToUse) return;
     const finalName = healthName.trim() || `Health Check ${new Date().toLocaleDateString()}`;
@@ -184,12 +185,13 @@ const Dashboard: React.FC<Props> = ({ team, currentUser, onOpenSession, onRefres
 
   const handleSubmitHealth = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedHealthCheck) return;
+    if (!selectedHealthCheck || selectedHealthCheck.phase !== 'SURVEY') return;
     dataService.submitHealthResponse(team.id, selectedHealthCheck.id, currentUser.id, healthRatings, anonymousAlias || undefined);
     onRefresh();
   };
 
   const handleAdvanceHealthPhase = (checkId: string) => {
+    if (!isAdmin) return;
     dataService.advanceHealthPhase(team.id, checkId);
     onRefresh();
   };
@@ -711,16 +713,26 @@ const Dashboard: React.FC<Props> = ({ team, currentUser, onOpenSession, onRefres
                   value={healthModelId}
                   onChange={(e) => setHealthModelId(e.target.value)}
                   className="w-full border border-slate-300 rounded-lg px-3 py-2 text-slate-800 focus:border-retro-primary focus:ring-1 focus:ring-indigo-100"
+                  disabled={!isAdmin}
                 >
                   {healthModels.map(model => (
                     <option key={model.id} value={model.id}>{model.name}</option>
                   ))}
                 </select>
                 <label className="flex items-center gap-2 text-sm text-slate-600">
-                  <input type="checkbox" checked={isAnonymous} onChange={(e) => setIsAnonymous(e.target.checked)} />
+                  <input type="checkbox" checked={isAnonymous} onChange={(e) => setIsAnonymous(e.target.checked)} disabled={!isAdmin} />
                   Anonymous answers
                 </label>
-                <button onClick={handleStartHealth} className="w-full bg-retro-primary text-white font-bold rounded-lg py-2 hover:bg-retro-primaryHover">Start</button>
+                <button
+                  onClick={handleStartHealth}
+                  disabled={!isAdmin}
+                  className="w-full bg-retro-primary text-white font-bold rounded-lg py-2 hover:bg-retro-primaryHover disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {isAdmin ? 'Start' : 'Only facilitators can start'}
+                </button>
+                {!isAdmin && (
+                  <p className="text-xs text-slate-500">A facilitator must start and drive phases, just like retrospectives.</p>
+                )}
               </div>
             </div>
 
@@ -741,6 +753,7 @@ const Dashboard: React.FC<Props> = ({ team, currentUser, onOpenSession, onRefres
                         value={healthRatings[dim.id]?.score || ''}
                         onChange={(e) => setHealthRatings({ ...healthRatings, [dim.id]: { score: Number(e.target.value), comment: healthRatings[dim.id]?.comment } })}
                         className="border border-slate-300 rounded px-2 py-1 text-sm"
+                        disabled={selectedHealthCheck.phase !== 'SURVEY'}
                       >
                         <option value="">–</option>
                         {[1,2,3,4,5].map(score => (
@@ -753,6 +766,7 @@ const Dashboard: React.FC<Props> = ({ team, currentUser, onOpenSession, onRefres
                       value={healthRatings[dim.id]?.comment || ''}
                       onChange={(e) => setHealthRatings({ ...healthRatings, [dim.id]: { score: healthRatings[dim.id]?.score || 0, comment: e.target.value } })}
                       className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 focus:border-retro-primary focus:ring-1 focus:ring-indigo-100"
+                      disabled={selectedHealthCheck.phase !== 'SURVEY'}
                     />
                   </div>
                 ))}
@@ -765,7 +779,10 @@ const Dashboard: React.FC<Props> = ({ team, currentUser, onOpenSession, onRefres
                     className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-700 focus:border-retro-primary focus:ring-1 focus:ring-indigo-100"
                   />
                 )}
-                <button type="submit" className="w-full bg-retro-primary text-white font-bold rounded-lg py-2 hover:bg-retro-primaryHover">Save my ratings</button>
+                <button type="submit" className="w-full bg-retro-primary text-white font-bold rounded-lg py-2 hover:bg-retro-primaryHover disabled:opacity-60 disabled:cursor-not-allowed" disabled={selectedHealthCheck.phase !== 'SURVEY'}>Save my ratings</button>
+                {selectedHealthCheck.phase !== 'SURVEY' && (
+                  <p className="text-xs text-slate-500 text-center">Ratings are locked after the survey—facilitators move phases just like retrospectives.</p>
+                )}
               </form>
             )}
           </div>
