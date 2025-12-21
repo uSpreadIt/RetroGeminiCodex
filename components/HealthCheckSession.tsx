@@ -352,35 +352,40 @@ const HealthCheckSession: React.FC<Props> = ({ team, currentUser, sessionId, onE
 
   // Render header (same style as Session.tsx)
   const renderHeader = () => (
-    <header className="h-14 bg-white border-b border-slate-200 flex items-center justify-between px-4 md:px-6 shrink-0 shadow-sm z-30">
-      <div className="flex items-center space-x-2">
-        {PHASES.map((phase, idx) => {
-          const isActive = session.phase === phase;
-          const isPast = PHASES.indexOf(session.phase) > idx;
-          return (
+    <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 shrink-0 z-50">
+      <div className="flex items-center h-full">
+        <button onClick={handleExit} className="mr-3 text-slate-400 hover:text-slate-700">
+          <span className="material-symbols-outlined">arrow_back</span>
+        </button>
+        <div className="hidden lg:flex h-full items-center space-x-1">
+          {PHASES.map(p => (
             <button
-              key={phase}
-              disabled={!isFacilitator || (!isPast && !isActive)}
-              onClick={() => isFacilitator && setPhase(phase)}
-              className={`px-3 py-1.5 rounded text-xs font-bold uppercase tracking-wide transition ${
-                isActive
-                  ? 'bg-retro-primary text-white'
-                  : isPast
-                    ? 'bg-slate-200 text-slate-600 hover:bg-slate-300'
-                    : 'bg-slate-100 text-slate-400'
+              key={p}
+              onClick={() => isFacilitator ? setPhase(p) : null}
+              disabled={!isFacilitator && session.status !== 'CLOSED'}
+              className={`phase-nav-btn h-full px-2 text-[10px] font-bold uppercase ${
+                session.phase === p ? 'active' : 'text-slate-400 disabled:opacity-50'
               }`}
             >
-              {phase}
+              {p}
             </button>
-          );
-        })}
+          ))}
+        </div>
       </div>
-
       <div className="flex items-center space-x-3">
-        <span className="text-slate-500 text-sm font-medium hidden md:block">
-          {team.name} &gt; <span className="text-slate-700 font-bold">{session.name}</span>
-        </span>
-        <div className={`w-8 h-8 rounded-full ${currentUser.color} text-white flex items-center justify-center text-xs font-bold`}>
+        {/* Real-time sync indicator */}
+        <div className="flex items-center text-emerald-600 bg-emerald-50 px-2 py-1 rounded" title="Real-time sync active">
+          <span className="material-symbols-outlined text-lg mr-1 animate-pulse">wifi</span>
+          <span className="text-xs font-bold hidden sm:inline">Live</span>
+        </div>
+        <button onClick={() => setShowInvite(true)} className="flex items-center text-slate-500 hover:text-retro-primary" title="Invite / Join">
+          <span className="material-symbols-outlined text-xl">qr_code_2</span>
+        </button>
+        <div className="flex flex-col items-end mr-2">
+          <span className="text-[10px] font-bold text-slate-400 uppercase">User</span>
+          <span className="text-sm font-bold text-slate-700">{currentUser.name}</span>
+        </div>
+        <div className={`w-8 h-8 rounded-full ${currentUser.color} text-white flex items-center justify-center text-xs font-bold shadow-md`}>
           {currentUser.name.substring(0, 2).toUpperCase()}
         </div>
       </div>
@@ -988,23 +993,10 @@ const HealthCheckSession: React.FC<Props> = ({ team, currentUser, sessionId, onE
     </div>
   );
 
-  // Create a "fake" RetroSession for InviteModal compatibility
-  const sessionForInvite = {
-    ...session,
-    // Add required RetroSession fields that InviteModal might use
-    columns: [],
-    tickets: [],
-    groups: [],
-    happiness: {},
-    icebreakerQuestion: '',
-    openActionsSnapshot: [],
-    historyActionsSnapshot: []
-  } as any;
-
   return (
     <div className="flex flex-col h-full bg-slate-50">
       {renderHeader()}
-      {showInvite && <InviteModal team={team} activeSession={sessionForInvite} onClose={() => setShowInvite(false)} />}
+      {showInvite && <InviteModal team={team} activeHealthCheck={session} onClose={() => setShowInvite(false)} />}
 
       <div className="flex-grow flex overflow-hidden">
         <div className="flex-grow overflow-y-auto overflow-x-auto relative flex flex-col">
