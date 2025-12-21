@@ -1,5 +1,5 @@
 # Multi-stage Dockerfile for Team Retrospective
-# Compatible with OpenShift and Railway (runs as non-root user)
+# Compatible with OpenShift, Railway, and standard Docker (runs as non-root user)
 
 # =============================================================================
 # Stage 1: Build
@@ -30,21 +30,26 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=8080
 
-# Install runtime dependencies only
+# Install su-exec for dropping privileges and runtime dependencies
+RUN apk add --no-cache su-exec
+
 COPY package*.json ./
 RUN npm ci --omit=dev --prefer-offline --no-audit
 
-# Copy built assets and server
+# Copy built assets, server, and entrypoint
 COPY --from=builder /app/dist ./dist
 COPY server.js ./server.js
+COPY docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
 
-# Non-root user for platforms like OpenShift
-RUN addgroup -S appgroup && adduser -S appuser -G appgroup
-USER appuser
+# Create data directory (will be overwritten by volume mounts)
+RUN mkdir -p /data
 
 EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
   CMD wget --no-verbose --tries=1 --spider http://localhost:${PORT}/health || exit 1
 
+# Entrypoint fixes volume permissions then drops to UID 1000
+ENTRYPOINT ["/docker-entrypoint.sh"]
 CMD ["node", "server.js"]
