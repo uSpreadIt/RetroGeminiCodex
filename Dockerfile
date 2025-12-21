@@ -30,28 +30,26 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=8080
 
-# Install runtime dependencies only
+# Install su-exec for dropping privileges and runtime dependencies
+RUN apk add --no-cache su-exec
+
 COPY package*.json ./
 RUN npm ci --omit=dev --prefer-offline --no-audit
 
-# Copy built assets and server
+# Copy built assets, server, and entrypoint
 COPY --from=builder /app/dist ./dist
 COPY server.js ./server.js
+COPY docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
 
-# Create data directory with open permissions for mounted volumes
-# Railway, Docker, and OpenShift mount volumes with varying UIDs
-# chmod 777 ensures any user can write to the directory
-RUN mkdir -p /data && chmod 777 /data
-
-# Use numeric UID 1000 (standard non-root user)
-# - Railway: runs as UID 1000 by default
-# - OpenShift: overrides with random UID via SecurityContextConstraints
-# - Docker: respects this UID
-USER 1000
+# Create data directory (will be overwritten by volume mounts)
+RUN mkdir -p /data
 
 EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
   CMD wget --no-verbose --tries=1 --spider http://localhost:${PORT}/health || exit 1
 
+# Entrypoint fixes volume permissions then drops to UID 1000
+ENTRYPOINT ["/docker-entrypoint.sh"]
 CMD ["node", "server.js"]
