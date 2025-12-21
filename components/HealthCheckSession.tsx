@@ -30,7 +30,7 @@ const HealthCheckSession: React.FC<Props> = ({ team, currentUser, sessionId, onE
   const isFacilitator = currentUser.role === 'facilitator';
   const [showInvite, setShowInvite] = useState(false);
   const [activeDiscussDimension, setActiveDiscussDimension] = useState<string | null>(null);
-  const [newActionText, setNewActionText] = useState('');
+  const [newProposalText, setNewProposalText] = useState('');
   const discussRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   // Get participants
@@ -53,6 +53,11 @@ const HealthCheckSession: React.FC<Props> = ({ team, currentUser, sessionId, onE
   };
 
   const participants = getParticipants();
+  const assignableMembers = Array.from(
+    new Map(
+      [...participants, ...team.members, ...(team.archivedMembers || [])].map(m => [m.id, m])
+    ).values()
+  );
 
   const getAnonymizedLabel = (memberId: string) => {
     if (!session?.settings.isAnonymous) return null;
@@ -330,24 +335,59 @@ const HealthCheckSession: React.FC<Props> = ({ team, currentUser, sessionId, onE
     });
   };
 
-  // Add action
-  const handleAddAction = (linkedDimensionId?: string) => {
-    if (!newActionText.trim()) return;
-
-    const newAction: ActionItem = {
-      id: Math.random().toString(36).substr(2, 9),
-      text: newActionText.trim(),
-      assigneeId: null,
-      done: false,
-      type: 'new',
-      proposalVotes: {},
-      linkedTicketId: linkedDimensionId
-    };
+  const handleAddProposal = (linkedDimensionId?: string) => {
+    if (!newProposalText.trim()) return;
 
     updateSession(s => {
-      s.actions.push(newAction);
+      s.actions.push({
+        id: Math.random().toString(36).substr(2, 9),
+        text: newProposalText.trim(),
+        assigneeId: null,
+        done: false,
+        type: 'proposal',
+        proposalVotes: {},
+        linkedTicketId: linkedDimensionId
+      });
     });
-    setNewActionText('');
+    setNewProposalText('');
+  };
+
+  const handleDirectAddAction = (linkedDimensionId?: string) => {
+    if (!newProposalText.trim()) return;
+
+    updateSession(s => {
+      s.actions.push({
+        id: Math.random().toString(36).substr(2, 9),
+        text: newProposalText.trim(),
+        assigneeId: null,
+        done: false,
+        type: 'new',
+        proposalVotes: {},
+        linkedTicketId: linkedDimensionId
+      });
+    });
+    setNewProposalText('');
+  };
+
+  const handleVoteProposal = (actionId: string, vote: 'up' | 'down' | 'neutral') => {
+    updateSession(s => {
+      const a = s.actions.find(x => x.id === actionId);
+      if (a) {
+        if (!a.proposalVotes) a.proposalVotes = {};
+        if (a.proposalVotes[currentUser.id] === vote) {
+          delete a.proposalVotes[currentUser.id];
+        } else {
+          a.proposalVotes[currentUser.id] = vote;
+        }
+      }
+    });
+  };
+
+  const handleAcceptProposal = (actionId: string) => {
+    updateSession(s => {
+      const a = s.actions.find(x => x.id === actionId);
+      if (a) a.type = 'new';
+    });
   };
 
   // Render header (same style as Session.tsx)
@@ -378,9 +418,11 @@ const HealthCheckSession: React.FC<Props> = ({ team, currentUser, sessionId, onE
           <span className="material-symbols-outlined text-lg mr-1 animate-pulse">wifi</span>
           <span className="text-xs font-bold hidden sm:inline">Live</span>
         </div>
-        <button onClick={() => setShowInvite(true)} className="flex items-center text-slate-500 hover:text-retro-primary" title="Invite / Join">
-          <span className="material-symbols-outlined text-xl">qr_code_2</span>
-        </button>
+        {isFacilitator && (
+          <button onClick={() => setShowInvite(true)} className="flex items-center text-slate-500 hover:text-retro-primary" title="Invite / Join">
+            <span className="material-symbols-outlined text-xl">qr_code_2</span>
+          </button>
+        )}
         <div className="flex flex-col items-end mr-2">
           <span className="text-[10px] font-bold text-slate-400 uppercase">User</span>
           <span className="text-sm font-bold text-slate-700">{currentUser.name}</span>
@@ -492,11 +534,7 @@ const HealthCheckSession: React.FC<Props> = ({ team, currentUser, sessionId, onE
 
   // Render Discuss Phase with Radar Chart
   const renderDiscuss = () => {
-    const sortedDimensions = [...session.dimensions].sort((a, b) => {
-      const statsA = getDimensionStats(a.id);
-      const statsB = getDimensionStats(b.id);
-      return statsA.average - statsB.average;
-    });
+    const orderedDimensions = session.dimensions;
 
     // Radar chart calculations
     const centerX = 200;
@@ -616,10 +654,9 @@ const HealthCheckSession: React.FC<Props> = ({ team, currentUser, sessionId, onE
 
             {/* Dimension Details */}
             <div className="space-y-4">
-              {sortedDimensions.map((dimension) => {
+              {orderedDimensions.map((dimension) => {
                 const stats = getDimensionStats(dimension.id);
                 const isActive = activeDiscussDimension === dimension.id;
-                const actionsForDimension = session.actions.filter(a => a.linkedTicketId === dimension.id);
 
                 return (
                   <div
@@ -706,31 +743,78 @@ const HealthCheckSession: React.FC<Props> = ({ team, currentUser, sessionId, onE
                         {/* Actions */}
                         <div>
                           <h4 className="text-xs font-bold text-slate-500 uppercase mb-2">Actions</h4>
-                          {actionsForDimension.length > 0 && (
-                            <div className="space-y-2 mb-3">
-                              {actionsForDimension.map(action => (
-                                <div key={action.id} className="flex items-center bg-emerald-50 border border-emerald-200 rounded-lg p-3">
-                                  <span className="material-symbols-outlined text-emerald-500 mr-2">check_circle</span>
-                                  <span className="text-slate-700 text-sm">{action.text}</span>
-                                </div>
-                              ))}
-                            </div>
-                          )}
+                          {(() => {
+                            const proposals = session.actions.filter(a => a.linkedTicketId === dimension.id && a.type === 'proposal');
+                            const acceptedActions = session.actions.filter(a => a.linkedTicketId === dimension.id && a.type === 'new');
+
+                            return (
+                              <>
+                                {proposals.map(p => {
+                                  const upVotes = Object.values(p.proposalVotes || {}).filter(v => v === 'up').length;
+                                  const neutralVotes = Object.values(p.proposalVotes || {}).filter(v => v === 'neutral').length;
+                                  const downVotes = Object.values(p.proposalVotes || {}).filter(v => v === 'down').length;
+                                  const totalVotes = upVotes + neutralVotes + downVotes;
+                                  const myVote = p.proposalVotes?.[currentUser.id];
+
+                                  return (
+                                    <div key={p.id} className="bg-white p-3 rounded border border-slate-200 mb-2 flex items-center justify-between">
+                                      <span className="text-slate-700 text-sm font-medium mr-2">{p.text}</span>
+                                      <div className="flex items-center space-x-3">
+                                        <div className="flex bg-slate-100 rounded-lg p-1 space-x-1">
+                                          <button onClick={() => handleVoteProposal(p.id, 'up')} className={`px-2 py-1 rounded flex items-center transition ${myVote==='up'?'bg-emerald-100 text-emerald-700 shadow-sm':'hover:bg-white text-slate-500'}`}>
+                                            <span className="material-symbols-outlined text-sm mr-1">thumb_up</span>
+                                            <span className="text-xs font-bold">{upVotes || ''}</span>
+                                          </button>
+                                          <button onClick={() => handleVoteProposal(p.id, 'neutral')} className={`px-2 py-1 rounded flex items-center transition ${myVote==='neutral'?'bg-slate-300 text-slate-800 shadow-sm':'hover:bg-white text-slate-500'}`}>
+                                            <span className="material-symbols-outlined text-sm mr-1">remove</span>
+                                            <span className="text-xs font-bold">{neutralVotes || ''}</span>
+                                          </button>
+                                          <button onClick={() => handleVoteProposal(p.id, 'down')} className={`px-2 py-1 rounded flex items-center transition ${myVote==='down'?'bg-rose-100 text-rose-700 shadow-sm':'hover:bg-white text-slate-500'}`}>
+                                            <span className="material-symbols-outlined text-sm mr-1">thumb_down</span>
+                                            <span className="text-xs font-bold">{downVotes || ''}</span>
+                                          </button>
+                                        </div>
+                                        <div className="text-[11px] font-bold text-slate-500 px-2 py-1 bg-slate-100 rounded">
+                                          Total: {totalVotes}
+                                        </div>
+                                        {isFacilitator && (
+                                          <button onClick={() => handleAcceptProposal(p.id)} className="bg-retro-primary text-white px-3 py-1.5 rounded text-xs font-bold hover:bg-retro-primaryHover shadow-sm">Accept</button>
+                                        )}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+
+                                {acceptedActions.map(a => (
+                                  <div key={a.id} className="flex items-center text-sm bg-emerald-50 p-2 rounded border border-emerald-200 text-emerald-800 mb-2">
+                                    <span className="material-symbols-outlined text-emerald-600 mr-2 text-sm">check_circle</span>
+                                    Accepted: {a.text}
+                                  </div>
+                                ))}
+                              </>
+                            );
+                          })()}
+
                           <div className="flex">
                             <input
                               type="text"
-                              placeholder="Add action..."
-                              value={newActionText}
-                              onChange={(e) => setNewActionText(e.target.value)}
-                              onKeyDown={(e) => e.key === 'Enter' && handleAddAction(dimension.id)}
+                              placeholder="Propose an action..."
+                              value={newProposalText}
+                              onChange={(e) => setNewProposalText(e.target.value)}
+                              onKeyDown={(e) => e.key === 'Enter' && handleAddProposal(dimension.id)}
                               className="flex-grow bg-white border border-slate-200 rounded-l-lg p-2 text-slate-700 text-sm focus:outline-none focus:border-retro-primary"
                             />
                             <button
-                              onClick={() => handleAddAction(dimension.id)}
-                              className="bg-retro-primary text-white px-4 rounded-r-lg font-bold text-sm hover:bg-retro-primaryHover"
+                              onClick={() => handleAddProposal(dimension.id)}
+                              className="bg-slate-700 text-white px-3 font-bold text-sm hover:bg-slate-800 border-l border-slate-600"
                             >
-                              Add
+                              Propose
                             </button>
+                            {isFacilitator && (
+                              <button onClick={() => handleDirectAddAction(dimension.id)} className="bg-retro-primary text-white px-3 rounded-r font-bold text-sm hover:bg-retro-primaryHover" title="Directly accept action">
+                                <span className="material-symbols-outlined text-sm">check</span>
+                              </button>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -822,7 +906,7 @@ const HealthCheckSession: React.FC<Props> = ({ team, currentUser, sessionId, onE
                             className="text-xs bg-white border border-slate-200 rounded p-1.5 text-slate-600 focus:border-retro-primary"
                           >
                             <option value="">Unassigned</option>
-                            {participants.map(m => (
+                            {assignableMembers.map(m => (
                               <option key={m.id} value={m.id}>{m.name}</option>
                             ))}
                           </select>
@@ -982,14 +1066,16 @@ const HealthCheckSession: React.FC<Props> = ({ team, currentUser, sessionId, onE
           </div>
         )}
       </div>
-      <div className="p-3 border-t border-slate-200">
-        <button
-          onClick={() => setShowInvite(true)}
-          className="w-full bg-retro-primary text-white py-2 rounded-lg font-bold text-sm hover:bg-retro-primaryHover"
-        >
-          Invite Team
-        </button>
-      </div>
+      {isFacilitator && (
+        <div className="p-3 border-t border-slate-200">
+          <button
+            onClick={() => setShowInvite(true)}
+            className="w-full bg-retro-primary text-white py-2 rounded-lg font-bold text-sm hover:bg-retro-primaryHover"
+          >
+            Invite Team
+          </button>
+        </div>
+      )}
     </div>
   );
 

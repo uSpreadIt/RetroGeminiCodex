@@ -58,7 +58,7 @@ const PRESETS: Record<string, Column[]> = {
 const HEALTH_CHECK_TEMPLATES: HealthCheckTemplate[] = [
     {
         id: 'team_health_fr',
-        name: 'Bilan santé R&S V2',
+        name: 'Bilan de santé',
         isDefault: true,
         dimensions: [
             {
