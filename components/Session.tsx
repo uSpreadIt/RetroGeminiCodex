@@ -473,6 +473,11 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
 
   if (!session) return <div>Session not found</div>;
   const participants = getParticipants();
+  const assignableMembers = Array.from(
+    new Map(
+      [...participants, ...team.members, ...(team.archivedMembers || [])].map(m => [m.id, m])
+    ).values()
+  );
   const timerAcknowledged = session.settings.timerAcknowledged ?? false;
   const timerFinished = session.settings.timerSeconds === 0 && !session.settings.timerRunning;
 
@@ -1057,9 +1062,11 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
                 <span className="material-symbols-outlined text-lg mr-1 animate-pulse">wifi</span>
                 <span className="text-xs font-bold hidden sm:inline">Live</span>
              </div>
-             <button onClick={() => setShowInvite(true)} className="flex items-center text-slate-500 hover:text-retro-primary" title="Invite / Join">
-                <span className="material-symbols-outlined text-xl">qr_code_2</span>
-             </button>
+             {isFacilitator && (
+               <button onClick={() => setShowInvite(true)} className="flex items-center text-slate-500 hover:text-retro-primary" title="Invite / Join">
+                  <span className="material-symbols-outlined text-xl">qr_code_2</span>
+               </button>
+             )}
              <div className="flex flex-col items-end mr-2">
                  <span className="text-[10px] font-bold text-slate-400 uppercase">User</span>
                  <span className="text-sm font-bold text-slate-700">{currentUser.name}</span>
@@ -1238,14 +1245,7 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
                                 className={`text-xs border border-slate-200 rounded p-1 bg-white text-slate-900 ${!isFacilitator ? 'opacity-50 cursor-not-allowed' : ''}`}
                             >
                                 <option value="">Unassigned</option>
-                               {participants.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-                               {action.assigneeId && !participants.some(p => p.id === action.assigneeId) && (
-                                 (() => {
-                                    const archived = (team.archivedMembers || []).find(m => m.id === action.assigneeId);
-                                    if (!archived) return null;
-                                    return <option key={archived.id} value={archived.id}>{archived.name} (removed)</option>;
-                                 })()
-                               )}
+                               {assignableMembers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                             </select>
                         </div>
                     )})}
@@ -1821,16 +1821,9 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
                     className={`text-xs border border-slate-200 rounded p-1.5 bg-white text-slate-600 focus:border-retro-primary focus:ring-1 focus:ring-indigo-100 outline-none ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
                 >
                     <option value="">Unassigned</option>
-                    {participants.map(m => (
+                    {assignableMembers.map(m => (
                         <option key={m.id} value={m.id}>{m.name}</option>
                     ))}
-                    {action.assigneeId && !participants.some(p => p.id === action.assigneeId) && (
-                        (() => {
-                            const archived = (team.archivedMembers || []).find(m => m.id === action.assigneeId);
-                            if (!archived) return null;
-                            return <option key={archived.id} value={archived.id}>{archived.name} (removed)</option>;
-                        })()
-                    )}
                 </select>
                 {isFacilitator && !isGlobal && (
                     <div className="ml-3">
@@ -2019,14 +2012,16 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
           </div>
         )}
       </div>
-      <div className="p-3 border-t border-slate-200">
-        <button
-          onClick={() => setShowInvite(true)}
-          className="w-full bg-retro-primary text-white py-2 rounded-lg font-bold text-sm hover:bg-retro-primaryHover"
-        >
-          Invite Team
-        </button>
-      </div>
+      {isFacilitator && (
+        <div className="p-3 border-t border-slate-200">
+          <button
+            onClick={() => setShowInvite(true)}
+            className="w-full bg-retro-primary text-white py-2 rounded-lg font-bold text-sm hover:bg-retro-primaryHover"
+          >
+            Invite Team
+          </button>
+        </div>
+      )}
     </div>
   );
 
