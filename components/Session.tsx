@@ -833,7 +833,7 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
           items.push({ id: t.id, text: t.text, votes: t.votes.length, type: 'ticket', ref: t });
       });
       session.groups.forEach(g => {
-          let count = g.votes.length;
+          const count = g.votes.length;
           items.push({ id: g.id, text: g.title, votes: count, type: 'group', ref: g });
       });
       return items.sort((a,b) => b.votes - a.votes);
@@ -1412,11 +1412,11 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
             )}
             <div className="flex-grow overflow-x-auto bg-slate-50 p-6 flex space-x-6 items-start h-auto min-h-0 justify-start">
                 {session.columns.map(col => {
-                    let tickets = session.tickets.filter(t => t.colId === col.id && !t.groupId);
+                    const tickets = session.tickets.filter(t => t.colId === col.id && !t.groupId);
                     const groups = session.groups.filter(g => g.colId === col.id);
 
                     // Group by Author if in GROUP phase
-                    let groupedTickets: Record<string, Ticket[]> = {};
+                    const groupedTickets: Record<string, Ticket[]> = {};
                     if (mode === 'GROUP') {
                         tickets.forEach(t => {
                             if(!groupedTickets[t.authorId]) groupedTickets[t.authorId] = [];
