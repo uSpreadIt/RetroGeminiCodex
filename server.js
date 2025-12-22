@@ -7,6 +7,7 @@ import fs from 'fs';
 import nodemailer from 'nodemailer';
 import Database from 'better-sqlite3';
 import { timingSafeEqual } from 'crypto';
+import rateLimit from 'express-rate-limit';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -32,6 +33,22 @@ app.get('/health', (_req, res) => res.status(200).send('OK'));
 app.get('/ready', (_req, res) => res.status(200).send('READY'));
 
 app.use(express.json({ limit: '1mb' }));
+
+// Rate limiting for authentication endpoints to prevent brute force attacks
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // Limit each IP to 5 requests per windowMs
+  message: { error: 'too_many_attempts', retryAfter: '15 minutes' },
+  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+  // Skip rate limiting if super admin is not configured
+  skip: (req) => {
+    if (req.path.startsWith('/api/super-admin')) {
+      return !process.env.SUPER_ADMIN_PASSWORD;
+    }
+    return false;
+  }
+});
 
 // Basic persistence for teams/actions between browser sessions using SQLite
 const resolveDataStoreCandidates = () => {
@@ -261,7 +278,7 @@ const secureCompare = (a, b) => {
   return timingSafeEqual(bufferA, bufferB);
 };
 
-app.post('/api/super-admin/verify', (req, res) => {
+app.post('/api/super-admin/verify', authLimiter, (req, res) => {
   const { password } = req.body || {};
 
   if (!SUPER_ADMIN_PASSWORD) {
@@ -275,8 +292,8 @@ app.post('/api/super-admin/verify', (req, res) => {
   return res.status(401).json({ error: 'invalid_password' });
 });
 
-app.get('/api/super-admin/teams', (req, res) => {
-  const { password } = req.query;
+app.post('/api/super-admin/teams', authLimiter, (req, res) => {
+  const { password } = req.body || {};
 
   if (!SUPER_ADMIN_PASSWORD || !secureCompare(password, SUPER_ADMIN_PASSWORD)) {
     return res.status(401).json({ error: 'unauthorized' });
@@ -286,7 +303,7 @@ app.get('/api/super-admin/teams', (req, res) => {
   res.json(persistedData);
 });
 
-app.post('/api/super-admin/update-email', (req, res) => {
+app.post('/api/super-admin/update-email', authLimiter, (req, res) => {
   const { password, teamId, facilitatorEmail } = req.body || {};
 
   if (!SUPER_ADMIN_PASSWORD || !secureCompare(password, SUPER_ADMIN_PASSWORD)) {
