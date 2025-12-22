@@ -16,6 +16,10 @@ interface Props {
 const PHASES = ['ICEBREAKER', 'WELCOME', 'OPEN_ACTIONS', 'BRAINSTORM', 'GROUP', 'VOTE', 'DISCUSS', 'REVIEW', 'CLOSE'];
 const EMOJIS = ['👍', '👎', '❤️', '🎉', '👏', '😄', '😮', '🤔', '😡', '😢'];
 const COLOR_POOL = ['bg-indigo-500', 'bg-emerald-500', 'bg-amber-500', 'bg-rose-500', 'bg-cyan-500', 'bg-fuchsia-500', 'bg-lime-500', 'bg-pink-500'];
+const isRetroSession = (session: unknown): session is RetroSession => {
+  if (!session || typeof session !== 'object') return false;
+  return 'columns' in (session as Record<string, unknown>) && 'tickets' in (session as Record<string, unknown>);
+};
 
 const ICEBREAKERS = [
     "What was the highlight of your week?",
@@ -213,6 +217,7 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
 
     // Listen for session updates from other clients
     const unsubUpdate = syncService.onSessionUpdate((updatedSession) => {
+      if (!isRetroSession(updatedSession)) return;
       if (syncService.getCurrentSessionId() !== sessionId || updatedSession.id !== sessionId) return;
 
       setSession(updatedSession);
@@ -396,21 +401,21 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
       }
 
       if (isFacilitator) {
-          const existingSnapshot = session.openActionsSnapshot || [];
-          const existingMap = new Map(existingSnapshot.map(a => [a.id, a]));
+            const existingSnapshot = session.openActionsSnapshot || [];
+            const existingMap = new Map(existingSnapshot.map(a => [a.id, a]));
 
-          const mergedSnapshot = snapshot.map(a => {
-              const existing = existingMap.get(a.id);
-              return {
-                  ...a,
+            const mergedSnapshot: ActionItem[] = snapshot.map(a => {
+                const existing = existingMap.get(a.id);
+                return {
+                    ...a,
                   done: existing?.done ?? a.done,
                   assigneeId: existing?.assigneeId ?? a.assigneeId,
               };
           });
 
-          existingSnapshot.forEach(a => {
-              if (!mergedSnapshot.some(m => m.id === a.id)) mergedSnapshot.push(a);
-          });
+            existingSnapshot.forEach(a => {
+                if (!mergedSnapshot.some(m => m.id === a.id)) mergedSnapshot.push(a);
+            });
 
           updateSession(s => { s.openActionsSnapshot = mergedSnapshot; });
       } else if (!reviewActionIds.length && session.openActionsSnapshot?.length) {
@@ -833,7 +838,7 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
           items.push({ id: t.id, text: t.text, votes: t.votes.length, type: 'ticket', ref: t });
       });
       session.groups.forEach(g => {
-          let count = g.votes.length;
+          const count = g.votes.length;
           items.push({ id: g.id, text: g.title, votes: count, type: 'group', ref: g });
       });
       return items.sort((a,b) => b.votes - a.votes);
@@ -1412,11 +1417,11 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
             )}
             <div className="flex-grow overflow-x-auto bg-slate-50 p-6 flex space-x-6 items-start h-auto min-h-0 justify-start">
                 {session.columns.map(col => {
-                    let tickets = session.tickets.filter(t => t.colId === col.id && !t.groupId);
+                    const tickets = session.tickets.filter(t => t.colId === col.id && !t.groupId);
                     const groups = session.groups.filter(g => g.colId === col.id);
 
                     // Group by Author if in GROUP phase
-                    let groupedTickets: Record<string, Ticket[]> = {};
+                    const groupedTickets: Record<string, Ticket[]> = {};
                     if (mode === 'GROUP') {
                         tickets.forEach(t => {
                             if(!groupedTickets[t.authorId]) groupedTickets[t.authorId] = [];

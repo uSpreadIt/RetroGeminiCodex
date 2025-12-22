@@ -1,0 +1,78 @@
+version: 2
+updates:
+  # Enable version updates for npm dependencies
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "daily"
+      time: "06:00"
+      timezone: "UTC"
+    # Limit to security updates only (comment out to get all updates)
+    open-pull-requests-limit: 10
+    reviewers:
+      - "uSpreadIt"
+    assignees:
+      - "uSpreadIt"
+    commit-message:
+      prefix: "npm"
+      include: "scope"
+    # Group minor and patch updates together
+    groups:
+      development-dependencies:
+        dependency-type: "development"
+        update-types:
+          - "minor"
+          - "patch"
+      production-dependencies:
+        dependency-type: "production"
+        update-types:
+          - "minor"
+          - "patch"
+    # Always allow security updates
+    labels:
+      - "dependencies"
+      - "security"
+    # Ignore specific dependencies if needed
+    # ignore:
+    #   - dependency-name: "react"
+    #     versions: ["19.x"]
+
+  # Enable version updates for GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 5
+    reviewers:
+      - "uSpreadIt"
+    assignees:
+      - "uSpreadIt"
+    commit-message:
+      prefix: "ci"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "github-actions"
+
+  # Enable version updates for Docker
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 3
+    reviewers:
+      - "uSpreadIt"
+    assignees:
+      - "uSpreadIt"
+    commit-message:
+      prefix: "docker"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "docker"
