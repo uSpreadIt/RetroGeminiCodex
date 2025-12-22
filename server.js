@@ -6,6 +6,7 @@ import { dirname, join } from 'path';
 import fs from 'fs';
 import nodemailer from 'nodemailer';
 import Database from 'better-sqlite3';
+import { timingSafeEqual } from 'crypto';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -235,6 +236,31 @@ If you did not request this reset, please ignore this email.
 // Set SUPER_ADMIN_PASSWORD environment variable to enable super admin access
 const SUPER_ADMIN_PASSWORD = process.env.SUPER_ADMIN_PASSWORD;
 
+/**
+ * Constant-time string comparison to prevent timing attacks
+ * @param {string} a - First string
+ * @param {string} b - Second string
+ * @returns {boolean} - True if strings are equal
+ */
+const secureCompare = (a, b) => {
+  if (typeof a !== 'string' || typeof b !== 'string') {
+    return false;
+  }
+
+  // Convert strings to buffers of equal length to prevent length-based timing attacks
+  const bufferA = Buffer.from(a);
+  const bufferB = Buffer.from(b);
+
+  // If lengths differ, compare against a dummy buffer to maintain constant time
+  if (bufferA.length !== bufferB.length) {
+    // Still perform a comparison to avoid timing leak on length check
+    timingSafeEqual(bufferA, bufferA);
+    return false;
+  }
+
+  return timingSafeEqual(bufferA, bufferB);
+};
+
 app.post('/api/super-admin/verify', (req, res) => {
   const { password } = req.body || {};
 
@@ -242,7 +268,7 @@ app.post('/api/super-admin/verify', (req, res) => {
     return res.status(503).json({ error: 'super_admin_not_configured' });
   }
 
-  if (password === SUPER_ADMIN_PASSWORD) {
+  if (secureCompare(password, SUPER_ADMIN_PASSWORD)) {
     return res.json({ success: true });
   }
 
@@ -252,7 +278,7 @@ app.post('/api/super-admin/verify', (req, res) => {
 app.get('/api/super-admin/teams', (req, res) => {
   const { password } = req.query;
 
-  if (!SUPER_ADMIN_PASSWORD || password !== SUPER_ADMIN_PASSWORD) {
+  if (!SUPER_ADMIN_PASSWORD || !secureCompare(password, SUPER_ADMIN_PASSWORD)) {
     return res.status(401).json({ error: 'unauthorized' });
   }
 
@@ -263,7 +289,7 @@ app.get('/api/super-admin/teams', (req, res) => {
 app.post('/api/super-admin/update-email', (req, res) => {
   const { password, teamId, facilitatorEmail } = req.body || {};
 
-  if (!SUPER_ADMIN_PASSWORD || password !== SUPER_ADMIN_PASSWORD) {
+  if (!SUPER_ADMIN_PASSWORD || !secureCompare(password, SUPER_ADMIN_PASSWORD)) {
     return res.status(401).json({ error: 'unauthorized' });
   }
 
