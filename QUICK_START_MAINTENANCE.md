@@ -1,188 +1,188 @@
 # 🚀 Quick Start - Maintenance & Best Practices
 
-Guide rapide pour démarrer avec les outils de qualité et maintenance.
+Quick guide to get started with quality and maintenance tools.
 
-## ⚡ Installation Rapide
+## ⚡ Quick Installation
 
 ```bash
-# Cloner et installer
+# Clone and install
 git clone <repo-url>
 cd RetroGeminiCodex
 npm install
 ```
 
-## 🎯 Commandes Essentielles
+## 🎯 Essential Commands
 
 ```bash
-# Développement
-npm run dev              # Démarrer le serveur de dev
+# Development
+npm run dev              # Start dev server
 
 # Tests
-npm test                 # Lancer les tests
-npm run test:coverage    # Tests + couverture
+npm test                 # Run tests
+npm run test:coverage    # Tests + coverage
 
-# Qualité du code
-npm run lint             # Vérifier le code
-npm run lint:fix         # Corriger automatiquement
-npm run type-check       # Vérifier les types TS
+# Code quality
+npm run lint             # Check code
+npm run lint:fix         # Auto-fix issues
+npm run type-check       # Check TS types
 
-# Sécurité
-npm run security:audit   # Audit de sécurité
+# Security
+npm run security:audit   # Security audit
 
-# CI complet (avant de push)
-npm run ci               # Lance lint + type-check + test + build
+# Full CI (before push)
+npm run ci               # Run lint + type-check + test + build
 ```
 
-## ✅ Workflow Quotidien
+## ✅ Daily Workflow
 
-### 1. Avant de Coder
+### 1. Before Coding
 
 ```bash
 git checkout develop
 git pull origin develop
-git checkout -b feature/ma-fonctionnalite
+git checkout -b feature/my-feature
 ```
 
-### 2. Pendant le Développement
+### 2. During Development
 
 ```bash
-npm run dev              # En arrière-plan
-npm run test:watch       # Tests en mode watch
+npm run dev              # In background
+npm run test:watch       # Tests in watch mode
 ```
 
-### 3. Avant de Commit
+### 3. Before Committing
 
 ```bash
-npm run lint:fix         # Corriger le style
-npm run type-check       # Vérifier les types
-npm test                 # Lancer les tests
+npm run lint:fix         # Fix style
+npm run type-check       # Check types
+npm test                 # Run tests
 ```
 
-### 4. Avant de Push
+### 4. Before Pushing
 
 ```bash
-npm run ci               # Vérifier que tout passe
-git push -u origin feature/ma-fonctionnalite
+npm run ci               # Verify everything passes
+git push -u origin feature/my-feature
 ```
 
-### 5. Créer une Pull Request
+### 5. Create a Pull Request
 
-1. Aller sur GitHub
-2. Créer une PR depuis votre branche
-3. Remplir le template de PR
-4. Attendre que tous les checks CI passent ✅
-5. Demander une review
-6. Merger après approbation
+1. Go to GitHub
+2. Create a PR from your branch
+3. Fill in the PR template
+4. Wait for all CI checks to pass ✅
+5. Request a review
+6. Merge after approval
 
-## 🔧 Résolution de Problèmes Rapides
+## 🔧 Quick Troubleshooting
 
-### ESLint trouve des erreurs
+### ESLint Errors
 
 ```bash
-npm run lint:fix         # Essayer de corriger auto
-npm run lint             # Voir ce qui reste à corriger
+npm run lint:fix         # Try to auto-fix
+npm run lint             # See what remains
 ```
 
-### Tests échouent
+### Tests Failing
 
 ```bash
-npm run test:watch       # Mode watch pour débugger
-npm run test:coverage    # Voir la couverture
+npm run test:watch       # Watch mode for debugging
+npm run test:coverage    # View coverage
 ```
 
-### Types TypeScript incorrects
+### TypeScript Type Errors
 
 ```bash
-npm run type-check       # Voir les erreurs de type
+npm run type-check       # See type errors
 ```
 
-### Vulnérabilités de sécurité
+### Security Vulnerabilities
 
 ```bash
-npm run security:audit   # Identifier les vulnérabilités
-npm run security:fix     # Essayer de les corriger
+npm run security:audit   # Identify vulnerabilities
+npm run security:fix     # Try to fix them
 ```
 
 ## 📊 GitHub Actions (CI/CD)
 
-Chaque push/PR déclenche automatiquement :
+Each push/PR automatically triggers:
 
-- ✅ **Lint** : Vérification du style de code
-- ✅ **Type-Check** : Vérification des types TypeScript
-- ✅ **Tests** : Exécution de tous les tests
-- ✅ **Build** : Compilation du projet
-- ✅ **Security** : Audit de sécurité
+- ✅ **Lint**: Code style verification
+- ✅ **Type-Check**: TypeScript type verification
+- ✅ **Tests**: Run all tests
+- ✅ **Build**: Project compilation
+- ✅ **Security**: Security audit
 
-Workflows supplémentaires :
+Additional workflows:
 
-- 🔒 **CodeQL** : Analyse de sécurité avancée (hebdomadaire)
-- 📦 **Dependency Review** : Vérification des nouvelles dépendances (sur PR)
-- 🤖 **Dependabot** : Mises à jour automatiques des dépendances
+- 🔒 **CodeQL**: Advanced security analysis (weekly)
+- 📦 **Dependency Review**: Check new dependencies (on PR)
+- 🤖 **Dependabot**: Automatic dependency updates
 
-## 🎓 Écrire des Tests - Templates
+## 🎓 Writing Tests - Templates
 
-### Test Simple
+### Simple Test
 
 ```typescript
 import { describe, it, expect } from 'vitest';
 
-describe('Ma fonctionnalité', () => {
-  it('devrait fonctionner', () => {
-    expect(maFonction()).toBe(resultatAttendu);
+describe('My feature', () => {
+  it('should work', () => {
+    expect(myFunction()).toBe(expectedResult);
   });
 });
 ```
 
-### Test React Component
+### React Component Test
 
 ```typescript
 import { render, screen } from '@testing-library/react';
-import MonComposant from './MonComposant';
+import MyComponent from './MyComponent';
 
-it('devrait afficher le texte', () => {
-  render(<MonComposant />);
+it('should display text', () => {
+  render(<MyComponent />);
   expect(screen.getByText('Hello')).toBeInTheDocument();
 });
 ```
 
-### Test Async
+### Async Test
 
 ```typescript
-it('devrait gérer les promesses', async () => {
-  const result = await maFonctionAsync();
+it('should handle promises', async () => {
+  const result = await myAsyncFunction();
   expect(result).toBe('success');
 });
 ```
 
-## 📈 Objectifs de Qualité
+## 📈 Quality Goals
 
-| Métrique | Objectif | Commande |
+| Metric | Goal | Command |
 |----------|----------|----------|
-| Couverture de tests | 70%+ | `npm run test:coverage` |
-| Erreurs ESLint | 0 | `npm run lint` |
-| Erreurs TypeScript | 0 | `npm run type-check` |
-| Vulnérabilités npm | 0 high/critical | `npm run security:audit` |
+| Test coverage | 70%+ | `npm run test:coverage` |
+| ESLint errors | 0 | `npm run lint` |
+| TypeScript errors | 0 | `npm run type-check` |
+| npm vulnerabilities | 0 high/critical | `npm run security:audit` |
 
-## 🔗 Liens Rapides
+## 🔗 Quick Links
 
-- 📖 [Guide Complet de Maintenance](./MAINTENANCE.md)
-- 📋 [Rapport d'Audit](./AUDIT_REPORT.md)
-- 🛡️ [Politique de Sécurité](./SECURITY.md)
-- 🤝 [Guide de Contribution](./CONTRIBUTING.md)
+- 📖 [Complete Maintenance Guide](./MAINTENANCE.md)
+- 📋 [Audit Report](./AUDIT_REPORT.md)
+- 🛡️ [Security Policy](./SECURITY.md)
+- 🤝 [Contributing Guide](./CONTRIBUTING.md)
 
-## 💡 Astuces Pro
+## 💡 Pro Tips
 
-1. **Utilisez `npm run ci` avant chaque push** pour vous assurer que le CI passera
-2. **Activez `npm run test:watch`** pendant le développement pour feedback instantané
-3. **Mergez les PRs Dependabot rapidement** pour rester à jour
-4. **Vérifiez le rapport de couverture** dans `coverage/index.html` après les tests
-5. **Utilisez les pre-commit hooks** pour automatiser les vérifications
+1. **Use `npm run ci` before every push** to ensure CI will pass
+2. **Enable `npm run test:watch`** during development for instant feedback
+3. **Merge Dependabot PRs quickly** to stay up to date
+4. **Check coverage report** in `coverage/index.html` after tests
+5. **Use pre-commit hooks** to automate checks
 
-## 🆘 Besoin d'Aide ?
+## 🆘 Need Help?
 
-- 📚 Voir [MAINTENANCE.md](./MAINTENANCE.md) pour le guide complet
-- 🐛 Ouvrir une issue sur GitHub
-- 💬 Demander à l'équipe
+- 📚 See [MAINTENANCE.md](./MAINTENANCE.md) for the complete guide
+- 🐛 Open an issue on GitHub
+- 💬 Ask the team
 
 ---
 
