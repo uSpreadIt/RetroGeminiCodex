@@ -313,7 +313,8 @@ export const dataService = {
       archivedMembers: [],
       customTemplates: [],
       retrospectives: [],
-      globalActions: []
+      globalActions: [],
+      lastConnectionDate: new Date().toISOString()
     };
     data.teams.push(newTeam);
     saveData(data);
