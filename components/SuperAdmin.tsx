@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Team } from '../types';
+import { Team, TeamFeedback } from '../types';
+import { dataService } from '../services/dataService';
 
 interface Props {
   superAdminPassword: string;
@@ -8,15 +9,20 @@ interface Props {
 }
 
 const SuperAdmin: React.FC<Props> = ({ superAdminPassword, onExit, onAccessTeam }) => {
+  const [tab, setTab] = useState<'TEAMS' | 'FEEDBACKS'>('TEAMS');
   const [teams, setTeams] = useState<Team[]>([]);
+  const [feedbacks, setFeedbacks] = useState<TeamFeedback[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [editingTeamId, setEditingTeamId] = useState<string | null>(null);
   const [editEmail, setEditEmail] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
+  const [selectedFeedback, setSelectedFeedback] = useState<TeamFeedback | null>(null);
+  const [feedbackFilter, setFeedbackFilter] = useState<'all' | 'unread' | 'bug' | 'feature'>('all');
 
   useEffect(() => {
     loadTeams();
+    loadFeedbacks();
   }, []);
 
   const loadTeams = async () => {
@@ -82,6 +88,89 @@ const SuperAdmin: React.FC<Props> = ({ superAdminPassword, onExit, onAccessTeam 
     setError('');
   };
 
+  const loadFeedbacks = () => {
+    const allFeedbacks = dataService.getAllFeedbacks();
+    setFeedbacks(allFeedbacks);
+  };
+
+  const handleDeleteFeedback = (feedback: TeamFeedback) => {
+    if (confirm(`Êtes-vous sûr de vouloir supprimer ce feedback de "${feedback.teamName}" ?`)) {
+      dataService.deleteTeamFeedback(feedback.teamId, feedback.id);
+      loadFeedbacks();
+      setSuccessMessage('Feedback supprimé avec succès');
+      setTimeout(() => setSuccessMessage(''), 3000);
+    }
+  };
+
+  const handleMarkAsRead = (feedback: TeamFeedback) => {
+    dataService.markFeedbackAsRead(feedback.teamId, feedback.id);
+    loadFeedbacks();
+  };
+
+  const handleUpdateFeedbackStatus = (feedback: TeamFeedback, status: TeamFeedback['status']) => {
+    dataService.updateTeamFeedback(feedback.teamId, feedback.id, { status });
+    loadFeedbacks();
+  };
+
+  const handleUpdateAdminNotes = (feedback: TeamFeedback, notes: string) => {
+    dataService.updateTeamFeedback(feedback.teamId, feedback.id, { adminNotes: notes });
+    loadFeedbacks();
+    setSelectedFeedback(null);
+    setSuccessMessage('Notes mises à jour avec succès');
+    setTimeout(() => setSuccessMessage(''), 3000);
+  };
+
+  const getFilteredFeedbacks = () => {
+    return feedbacks.filter(f => {
+      if (feedbackFilter === 'unread') return !f.isRead;
+      if (feedbackFilter === 'bug') return f.type === 'bug';
+      if (feedbackFilter === 'feature') return f.type === 'feature';
+      return true;
+    });
+  };
+
+  const unreadCount = feedbacks.filter(f => !f.isRead).length;
+
+  const formatDate = (isoDate: string) => {
+    const date = new Date(isoDate);
+    return date.toLocaleDateString('fr-FR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  const getStatusBadge = (status: TeamFeedback['status']) => {
+    const badges = {
+      pending: { text: 'En attente', color: 'bg-yellow-100 text-yellow-800' },
+      in_progress: { text: 'En cours', color: 'bg-blue-100 text-blue-800' },
+      resolved: { text: 'Résolu', color: 'bg-green-100 text-green-800' },
+      rejected: { text: 'Rejeté', color: 'bg-red-100 text-red-800' }
+    };
+    const badge = badges[status];
+    return (
+      <span className={`px-2 py-1 text-xs rounded-full ${badge.color}`}>
+        {badge.text}
+      </span>
+    );
+  };
+
+  const getTypeBadge = (feedbackType: 'bug' | 'feature') => {
+    return feedbackType === 'bug' ? (
+      <span className="px-2 py-1 text-xs rounded-full bg-red-100 text-red-800">
+        <span className="material-symbols-outlined text-xs align-middle mr-1">bug_report</span>
+        Bug
+      </span>
+    ) : (
+      <span className="px-2 py-1 text-xs rounded-full bg-purple-100 text-purple-800">
+        <span className="material-symbols-outlined text-xs align-middle mr-1">new_releases</span>
+        Fonctionnalité
+      </span>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-slate-100 p-8">
       <div className="max-w-6xl mx-auto">
@@ -116,12 +205,43 @@ const SuperAdmin: React.FC<Props> = ({ superAdminPassword, onExit, onAccessTeam 
           </div>
         )}
 
-        {loading ? (
+        {/* Tabs */}
+        <div className="flex border-b border-slate-200 mb-6">
+          <button
+            onClick={() => setTab('TEAMS')}
+            className={`px-6 py-3 font-bold text-sm flex items-center transition ${
+              tab === 'TEAMS'
+                ? 'border-b-2 border-indigo-600 text-indigo-600'
+                : 'text-slate-500 hover:text-indigo-600'
+            }`}
+          >
+            <span className="material-symbols-outlined mr-2">groups</span>
+            Équipes ({teams.length})
+          </button>
+          <button
+            onClick={() => setTab('FEEDBACKS')}
+            className={`px-6 py-3 font-bold text-sm flex items-center transition relative ${
+              tab === 'FEEDBACKS'
+                ? 'border-b-2 border-indigo-600 text-indigo-600'
+                : 'text-slate-500 hover:text-indigo-600'
+            }`}
+          >
+            <span className="material-symbols-outlined mr-2">feedback</span>
+            Feedbacks ({feedbacks.length})
+            {unreadCount > 0 && (
+              <span className="ml-2 bg-red-500 text-white text-xs rounded-full px-2 py-0.5">
+                {unreadCount}
+              </span>
+            )}
+          </button>
+        </div>
+
+        {loading && tab === 'TEAMS' ? (
           <div className="text-center py-12">
             <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
             <p className="text-slate-500 mt-4">Loading teams...</p>
           </div>
-        ) : (
+        ) : tab === 'TEAMS' ? (
           <div className="bg-white rounded-xl shadow-lg overflow-hidden">
             <div className="bg-gradient-to-r from-indigo-600 to-purple-700 text-white p-4">
               <h2 className="text-xl font-bold">Teams ({teams.length})</h2>
@@ -220,6 +340,191 @@ const SuperAdmin: React.FC<Props> = ({ superAdminPassword, onExit, onAccessTeam 
                   <p>No teams found</p>
                 </div>
               )}
+            </div>
+          </div>
+        ) : null}
+
+        {/* Feedbacks Tab */}
+        {tab === 'FEEDBACKS' && (
+          <div>
+            {/* Filters */}
+            <div className="mb-6 flex gap-2">
+              <button
+                onClick={() => setFeedbackFilter('all')}
+                className={`px-4 py-2 rounded-lg font-medium text-sm ${
+                  feedbackFilter === 'all'
+                    ? 'bg-indigo-600 text-white'
+                    : 'bg-white text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                Tous ({feedbacks.length})
+              </button>
+              <button
+                onClick={() => setFeedbackFilter('unread')}
+                className={`px-4 py-2 rounded-lg font-medium text-sm ${
+                  feedbackFilter === 'unread'
+                    ? 'bg-indigo-600 text-white'
+                    : 'bg-white text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                Non lus ({unreadCount})
+              </button>
+              <button
+                onClick={() => setFeedbackFilter('bug')}
+                className={`px-4 py-2 rounded-lg font-medium text-sm ${
+                  feedbackFilter === 'bug'
+                    ? 'bg-indigo-600 text-white'
+                    : 'bg-white text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                Bugs ({feedbacks.filter(f => f.type === 'bug').length})
+              </button>
+              <button
+                onClick={() => setFeedbackFilter('feature')}
+                className={`px-4 py-2 rounded-lg font-medium text-sm ${
+                  feedbackFilter === 'feature'
+                    ? 'bg-indigo-600 text-white'
+                    : 'bg-white text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                Fonctionnalités ({feedbacks.filter(f => f.type === 'feature').length})
+              </button>
+            </div>
+
+            {/* Feedbacks List */}
+            <div className="space-y-4">
+              {getFilteredFeedbacks().length === 0 ? (
+                <div className="bg-white rounded-xl shadow p-12 text-center text-slate-400">
+                  <span className="material-symbols-outlined text-6xl mb-4 opacity-50">feedback</span>
+                  <p>Aucun feedback à afficher</p>
+                </div>
+              ) : (
+                getFilteredFeedbacks().map((feedback) => (
+                  <div
+                    key={feedback.id}
+                    className={`bg-white rounded-xl shadow-md p-6 ${
+                      !feedback.isRead ? 'border-l-4 border-l-indigo-600' : ''
+                    }`}
+                  >
+                    <div className="flex justify-between items-start mb-3">
+                      <div className="flex items-center gap-2">
+                        {getTypeBadge(feedback.type)}
+                        {getStatusBadge(feedback.status)}
+                        {!feedback.isRead && (
+                          <span className="px-2 py-1 text-xs rounded-full bg-indigo-100 text-indigo-800">
+                            Nouveau
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-sm text-slate-500">{formatDate(feedback.submittedAt)}</span>
+                    </div>
+
+                    <h3 className="text-lg font-semibold text-slate-800 mb-2">{feedback.title}</h3>
+                    <p className="text-slate-600 mb-3 whitespace-pre-wrap">{feedback.description}</p>
+
+                    {feedback.images && feedback.images.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mb-3">
+                        {feedback.images.map((img, idx) => (
+                          <img
+                            key={idx}
+                            src={img}
+                            alt={`Feedback ${idx + 1}`}
+                            className="w-32 h-32 object-cover rounded cursor-pointer hover:opacity-80"
+                            onClick={() => window.open(img, '_blank')}
+                          />
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="text-sm text-slate-500 mb-3">
+                      Soumis par {feedback.submittedByName} de l'équipe{' '}
+                      <span className="font-semibold">{feedback.teamName}</span>
+                    </div>
+
+                    {feedback.adminNotes && (
+                      <div className="mb-3 p-3 bg-amber-50 border border-amber-200 rounded">
+                        <p className="text-sm font-medium text-amber-800 mb-1">Vos notes:</p>
+                        <p className="text-sm text-amber-700">{feedback.adminNotes}</p>
+                      </div>
+                    )}
+
+                    {/* Actions */}
+                    <div className="flex gap-2 flex-wrap">
+                      {!feedback.isRead && (
+                        <button
+                          onClick={() => handleMarkAsRead(feedback)}
+                          className="px-3 py-1.5 bg-indigo-100 text-indigo-700 rounded text-sm font-medium hover:bg-indigo-200"
+                        >
+                          Marquer comme lu
+                        </button>
+                      )}
+
+                      <select
+                        value={feedback.status}
+                        onChange={(e) =>
+                          handleUpdateFeedbackStatus(feedback, e.target.value as TeamFeedback['status'])
+                        }
+                        className="px-3 py-1.5 bg-white border border-slate-300 rounded text-sm"
+                      >
+                        <option value="pending">En attente</option>
+                        <option value="in_progress">En cours</option>
+                        <option value="resolved">Résolu</option>
+                        <option value="rejected">Rejeté</option>
+                      </select>
+
+                      <button
+                        onClick={() => setSelectedFeedback(feedback)}
+                        className="px-3 py-1.5 bg-blue-100 text-blue-700 rounded text-sm font-medium hover:bg-blue-200"
+                      >
+                        Ajouter/Modifier notes
+                      </button>
+
+                      <button
+                        onClick={() => handleDeleteFeedback(feedback)}
+                        className="px-3 py-1.5 bg-red-100 text-red-700 rounded text-sm font-medium hover:bg-red-200"
+                      >
+                        Supprimer
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Admin Notes Modal */}
+        {selectedFeedback && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full p-6">
+              <h3 className="text-xl font-bold text-slate-800 mb-4">Notes d'administration</h3>
+              <p className="text-sm text-slate-600 mb-4">
+                Feedback: <span className="font-semibold">{selectedFeedback.title}</span>
+              </p>
+              <textarea
+                defaultValue={selectedFeedback.adminNotes || ''}
+                placeholder="Ajoutez vos notes ici..."
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                rows={6}
+                id="admin-notes-input"
+              />
+              <div className="flex gap-3 mt-4">
+                <button
+                  onClick={() => {
+                    const input = document.getElementById('admin-notes-input') as HTMLTextAreaElement;
+                    handleUpdateAdminNotes(selectedFeedback, input.value);
+                  }}
+                  className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+                >
+                  Enregistrer
+                </button>
+                <button
+                  onClick={() => setSelectedFeedback(null)}
+                  className="px-4 py-2 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300"
+                >
+                  Annuler
+                </button>
+              </div>
             </div>
           </div>
         )}
