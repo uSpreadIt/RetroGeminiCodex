@@ -1036,7 +1036,10 @@ const HealthCheckSession: React.FC<Props> = ({ team, currentUser, sessionId, onE
   // Render participants panel (same style as Session.tsx)
   const renderParticipantsPanel = () => {
     // Default to collapsed for participants, expanded for facilitators
-    const isCollapsed = session.settings.participantsPanelCollapsed ?? !isFacilitator;
+    // Only use default if the setting is undefined (not set yet)
+    const isCollapsed = session.settings.participantsPanelCollapsed !== undefined
+      ? session.settings.participantsPanelCollapsed
+      : !isFacilitator;
 
     return (
       <div className={`bg-white border-l border-slate-200 flex flex-col shrink-0 hidden lg:flex transition-all ${isCollapsed ? 'w-12' : 'w-64'}`}>

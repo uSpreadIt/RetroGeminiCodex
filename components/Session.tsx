@@ -92,6 +92,7 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
 
   // Interaction State
   const [emojiPickerOpenId, setEmojiPickerOpenId] = useState<string | null>(null);
+  const emojiPickerRef = useRef<HTMLDivElement | null>(null);
 
   // Open Actions Phase State
   const [reviewActionIds, setReviewActionIds] = useState<string[]>([]);
@@ -213,6 +214,22 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
 
     updateSession(s => { s.participants = updated; });
   };
+
+  // Close emoji picker when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (emojiPickerOpenId && emojiPickerRef.current && !emojiPickerRef.current.contains(event.target as Node)) {
+        setEmojiPickerOpenId(null);
+      }
+    };
+
+    if (emojiPickerOpenId) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
+    }
+  }, [emojiPickerOpenId]);
 
   // Connect to sync service on mount
   useEffect(() => {
@@ -876,18 +893,14 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
       const colorBy = session.settings.colorBy || 'topic';
       const column = session.columns.find(c => c.id === t.colId);
       let cardBgHex: string | null = null;
-      let cardTextColor = 'text-slate-700';
+      const cardTextColor = 'text-white'; // Always white text on colored backgrounds
 
       if (colorBy === 'author' && author && visible) {
         // Use author's color for background
         cardBgHex = TAILWIND_COLOR_MAP[author.color] || null;
-        if (cardBgHex) {
-          cardTextColor = isLightColor(cardBgHex) ? 'text-slate-900' : 'text-white';
-        }
       } else if (colorBy === 'topic' && column?.customColor && visible) {
         // Use column's custom color for background
         cardBgHex = column.customColor;
-        cardTextColor = isLightColor(cardBgHex) ? 'text-slate-900' : 'text-white';
       }
 
       return (
@@ -1009,9 +1022,9 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
                         >
                             <span className="material-symbols-outlined text-sm">add_reaction</span>
                         </button>
-                        
+
                         {isPickerOpen && (
-                            <div className="absolute top-full left-0 bg-white border border-slate-200 shadow-xl rounded-lg p-2 grid grid-cols-5 gap-1 z-50 w-max mt-1">
+                            <div ref={emojiPickerRef} className="absolute top-full left-0 bg-white border border-slate-200 shadow-xl rounded-lg p-2 grid grid-cols-5 gap-1 z-50 w-max mt-1">
                                 {EMOJIS.map(e => (
                                     <button 
                                         key={e}
@@ -2081,7 +2094,10 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
   // Render participants panel
   const renderParticipantsPanel = () => {
     // Default to collapsed for participants, expanded for facilitators
-    const isCollapsed = session.settings.participantsPanelCollapsed ?? !isFacilitator;
+    // Only use default if the setting is undefined (not set yet)
+    const isCollapsed = session.settings.participantsPanelCollapsed !== undefined
+      ? session.settings.participantsPanelCollapsed
+      : !isFacilitator;
 
     return (
       <div className={`bg-white border-l border-slate-200 flex flex-col shrink-0 hidden lg:flex transition-all ${isCollapsed ? 'w-12' : 'w-64'}`}>
