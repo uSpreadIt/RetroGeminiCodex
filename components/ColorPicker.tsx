@@ -6,36 +6,25 @@ interface ColorPickerProps {
   onClose?: () => void;
 }
 
-// Palette de couleurs prédéfinies organisée par teinte
-const COLOR_PALETTE = [
-  // Rouges
-  ['#EF4444', '#DC2626', '#B91C1C', '#991B1B', '#7F1D1D'],
-  // Roses
-  ['#EC4899', '#DB2777', '#BE185D', '#9D174D', '#831843'],
-  // Violets
-  ['#A855F7', '#9333EA', '#7E22CE', '#6B21A8', '#581C87'],
-  // Indigo
-  ['#6366F1', '#4F46E5', '#4338CA', '#3730A3', '#312E81'],
-  // Bleus
-  ['#3B82F6', '#2563EB', '#1D4ED8', '#1E40AF', '#1E3A8A'],
-  // Cyan
-  ['#06B6D4', '#0891B2', '#0E7490', '#155E75', '#164E63'],
-  // Turquoise
-  ['#14B8A6', '#0D9488', '#0F766E', '#115E59', '#134E4A'],
-  // Verts
-  ['#10B981', '#059669', '#047857', '#065F46', '#064E3B'],
-  // Lime
-  ['#84CC16', '#65A30D', '#4D7C0F', '#3F6212', '#365314'],
-  // Jaunes
-  ['#EAB308', '#CA8A04', '#A16207', '#854D0E', '#713F12'],
-  // Orange
-  ['#F97316', '#EA580C', '#C2410C', '#9A3412', '#7C2D12'],
-  // Marrons
-  ['#A16207', '#92400E', '#78350F', '#78350F', '#451A03'],
-  // Gris
-  ['#64748B', '#475569', '#334155', '#1E293B', '#0F172A'],
-  // Gris neutre
-  ['#737373', '#525252', '#404040', '#262626', '#171717'],
+// Simplified color palette - one color per hue, all work well with white text
+const COLORS = [
+  '#dc2626', // red-600
+  '#e11d48', // rose-600
+  '#db2777', // pink-600
+  '#c026d3', // fuchsia-600
+  '#9333ea', // purple-600
+  '#7c3aed', // violet-600
+  '#4f46e5', // indigo-600
+  '#2563eb', // blue-600
+  '#0284c7', // sky-600
+  '#0891b2', // cyan-600
+  '#0d9488', // teal-600
+  '#059669', // emerald-600
+  '#16a34a', // green-600
+  '#65a30d', // lime-600
+  '#ca8a04', // yellow-600
+  '#ea580c', // orange-600
+  '#475569', // slate-600
 ];
 
 export const ColorPicker: React.FC<ColorPickerProps> = ({ initialColor = '#6366F1', onChange, onClose }) => {
@@ -77,23 +66,19 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({ initialColor = '#6366F
       </div>
 
       {/* Color Palette Grid */}
-      <div className="space-y-2 max-h-80 overflow-y-auto">
-        {COLOR_PALETTE.map((row, rowIndex) => (
-          <div key={rowIndex} className="flex gap-2">
-            {row.map((color) => (
-              <button
-                key={color}
-                onClick={() => handleColorSelect(color)}
-                className={`w-9 h-9 rounded-md transition-all hover:scale-110 border-2 ${
-                  selectedColor === color
-                    ? 'border-gray-800 ring-2 ring-gray-300'
-                    : 'border-gray-200 hover:border-gray-400'
-                }`}
-                style={{ backgroundColor: color }}
-                title={color}
-              />
-            ))}
-          </div>
+      <div className="grid grid-cols-6 gap-2">
+        {COLORS.map((color) => (
+          <button
+            key={color}
+            onClick={() => handleColorSelect(color)}
+            className={`w-10 h-10 rounded-md transition-all hover:scale-110 border-2 ${
+              selectedColor === color
+                ? 'border-gray-800 ring-2 ring-gray-300'
+                : 'border-gray-200 hover:border-gray-400'
+            }`}
+            style={{ backgroundColor: color }}
+            title={color}
+          />
         ))}
       </div>
     </div>
