@@ -44,6 +44,10 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({ initialColor = '#6366F
   const handleColorSelect = (color: string) => {
     setSelectedColor(color);
     onChange(color);
+    // Auto-close après sélection
+    if (onClose) {
+      setTimeout(() => onClose(), 150);
+    }
   };
 
   return (
