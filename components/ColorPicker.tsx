@@ -22,7 +22,8 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({ initialColor = '#6366F
 
     const max = Math.max(r, g, b);
     const min = Math.min(r, g, b);
-    let h = 0, s = 0, l = (max + min) / 2;
+    let h = 0, s = 0;
+    const l = (max + min) / 2;
 
     if (max !== min) {
       const d = max - min;
