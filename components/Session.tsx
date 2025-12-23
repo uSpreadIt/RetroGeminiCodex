@@ -1,10 +1,9 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Team, User, RetroSession, Column, Ticket, ActionItem, Group } from '../types';
+import { Team, User, RetroSession, Ticket, ActionItem, Group } from '../types';
 import { dataService } from '../services/dataService';
 import { syncService } from '../services/syncService';
 import InviteModal from './InviteModal';
-import { getColumnColorStyles } from '../utils/colorUtils';
 
 interface Props {
   team: Team;
@@ -1460,13 +1459,7 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
                                 </button>
                             )}
 
-                            <div
-                                className={`p-3 border-b border-slate-100 font-bold flex items-center justify-between ${!col.customColor ? col.color + ' ' + col.text : ''}`}
-                                style={col.customColor ? {
-                                    backgroundColor: getColumnColorStyles(col.customColor).background,
-                                    color: getColumnColorStyles(col.customColor).text
-                                } : undefined}
-                            >
+                            <div className="p-3 border-b border-slate-100 font-bold flex items-center justify-between bg-white">
                                 {isEditingColumns ? (
                                     <input
                                         value={col.title}
@@ -1482,16 +1475,22 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
                                         className="bg-white/50 border border-slate-300 rounded px-2 py-1 text-sm w-full mr-8"
                                     />
                                 ) : (
-                                    <div className="flex items-center"><span className="material-symbols-outlined mr-2">{col.icon}</span> {col.title}</div>
+                                    <div
+                                        className={`flex items-center ${!col.customColor ? col.text : ''}`}
+                                        style={col.customColor ? { color: col.customColor } : undefined}
+                                    >
+                                        <span className="material-symbols-outlined mr-2">{col.icon}</span> {col.title}
+                                    </div>
                                 )}
-                                <span className="bg-white/60 px-2 py-0.5 rounded-full text-xs font-bold">{tickets.length + groups.length}</span>
+                                <span className="bg-slate-100 px-2 py-0.5 rounded-full text-xs font-bold text-slate-600">{tickets.length + groups.length}</span>
                             </div>
                             <div className="p-3 space-y-3 bg-slate-50/50 relative">
                                 {mode === 'BRAINSTORM' && (
                                     <div
-                                        className={`bg-white p-3 rounded border border-slate-200 shadow-sm focus-within:ring-2 transition ${!col.customColor ? col.ring : ''}`}
+                                        className={`bg-white p-3 rounded border shadow-sm focus-within:ring-2 transition ${!col.customColor ? 'border-slate-200 ' + col.ring : ''}`}
                                         style={col.customColor ? {
-                                            '--tw-ring-color': getColumnColorStyles(col.customColor).ring
+                                            borderColor: col.customColor + '40',
+                                            '--tw-ring-color': col.customColor + '30'
                                         } as React.CSSProperties : undefined}
                                     >
                                         <textarea 

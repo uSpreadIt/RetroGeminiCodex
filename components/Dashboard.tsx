@@ -4,7 +4,6 @@ import { Team, User, RetroSession, Column, HealthCheckSession, HealthCheckTempla
 import { dataService } from '../services/dataService';
 import { ColorPicker } from './ColorPicker';
 import { IconPicker } from './IconPicker';
-import { getColumnColorStyles } from '../utils/colorUtils';
 
 interface Props {
   team: Team;
@@ -765,10 +764,6 @@ const Dashboard: React.FC<Props> = ({ team, currentUser, onOpenSession, onOpenHe
               <div>
                 <label className="block text-sm font-bold text-slate-700 mb-2">Columns</label>
                 {retroTemplateCols.map((c, idx) => {
-                  const colorStyles = c.customColor ? getColumnColorStyles(c.customColor) : null;
-                  const bgColor = colorStyles ? colorStyles.background : undefined;
-                  const borderColor = colorStyles ? colorStyles.border : undefined;
-
                   return (
                     <div key={c.id} className="flex gap-2 mb-3 items-center">
                       {/* Icon Picker Button */}
@@ -779,11 +774,15 @@ const Dashboard: React.FC<Props> = ({ team, currentUser, onOpenSession, onOpenHe
                             setIconPickerOpen(iconPickerOpen === c.id ? null : c.id);
                             setColorPickerOpen(null);
                           }}
-                          className="w-12 h-12 border-2 border-slate-300 rounded-lg flex items-center justify-center hover:border-indigo-400 hover:bg-indigo-50 transition-all"
-                          style={bgColor ? { backgroundColor: bgColor, borderColor: borderColor } : undefined}
+                          className="w-12 h-12 border-2 border-slate-300 rounded-lg flex items-center justify-center hover:border-indigo-400 hover:bg-indigo-50 transition-all bg-white"
                           title="Pick icon"
                         >
-                          <span className="material-symbols-outlined text-2xl text-slate-700">{c.icon}</span>
+                          <span
+                            className="material-symbols-outlined text-2xl"
+                            style={{ color: c.customColor || '#64748B' }}
+                          >
+                            {c.icon}
+                          </span>
                         </button>
                         {iconPickerOpen === c.id && (
                           <IconPicker
