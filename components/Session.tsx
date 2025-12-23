@@ -4,6 +4,7 @@ import { Team, User, RetroSession, Ticket, ActionItem, Group } from '../types';
 import { dataService } from '../services/dataService';
 import { syncService } from '../services/syncService';
 import InviteModal from './InviteModal';
+import { isLightColor } from '../utils/colorUtils';
 
 interface Props {
   team: Team;
@@ -16,6 +17,19 @@ interface Props {
 const PHASES = ['ICEBREAKER', 'WELCOME', 'OPEN_ACTIONS', 'BRAINSTORM', 'GROUP', 'VOTE', 'DISCUSS', 'REVIEW', 'CLOSE'];
 const EMOJIS = ['👍', '👎', '❤️', '🎉', '👏', '😄', '😮', '🤔', '😡', '😢'];
 const COLOR_POOL = ['bg-indigo-500', 'bg-emerald-500', 'bg-amber-500', 'bg-rose-500', 'bg-cyan-500', 'bg-fuchsia-500', 'bg-lime-500', 'bg-pink-500'];
+
+// Map Tailwind color classes to hex values
+const TAILWIND_COLOR_MAP: Record<string, string> = {
+  'bg-indigo-500': '#6366f1',
+  'bg-emerald-500': '#10b981',
+  'bg-amber-500': '#f59e0b',
+  'bg-rose-500': '#f43f5e',
+  'bg-cyan-500': '#06b6d4',
+  'bg-fuchsia-500': '#d946ef',
+  'bg-lime-500': '#84cc16',
+  'bg-pink-500': '#ec4899'
+};
+
 const isRetroSession = (session: unknown): session is RetroSession => {
   if (!session || typeof session !== 'object') return false;
   return 'columns' in (session as Record<string, unknown>) && 'tickets' in (session as Record<string, unknown>);
@@ -861,19 +875,19 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
       // Color by author or topic
       const colorBy = session.settings.colorBy || 'topic';
       const column = session.columns.find(c => c.id === t.colId);
-      let cardBgColor = 'bg-white';
-      let cardBorderColor = 'border-slate-200';
+      let cardBgHex: string | null = null;
+      let cardTextColor = 'text-slate-700';
 
       if (colorBy === 'author' && author && visible) {
-        // Use author's color for background (lighter shade)
-        cardBgColor = author.color.replace('bg-', 'bg-') + '/10';
-        cardBorderColor = author.color.replace('bg-', 'border-');
+        // Use author's color for background
+        cardBgHex = TAILWIND_COLOR_MAP[author.color] || null;
+        if (cardBgHex) {
+          cardTextColor = isLightColor(cardBgHex) ? 'text-slate-900' : 'text-white';
+        }
       } else if (colorBy === 'topic' && column?.customColor && visible) {
-        // Use column's custom color for border
-        cardBorderColor = '';
-      } else if (colorBy === 'topic' && column && visible) {
-        // Use column's border color
-        cardBorderColor = column.border;
+        // Use column's custom color for background
+        cardBgHex = column.customColor;
+        cardTextColor = isLightColor(cardBgHex) ? 'text-slate-900' : 'text-white';
       }
 
       return (
@@ -896,10 +910,11 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
             }}
             className={`p-3 rounded shadow-sm border group relative mb-2 transition-all
                 ${mode === 'GROUP' ? 'cursor-grab active:cursor-grabbing' : ''}
-                ${isDragTarget ? 'ring-4 ring-indigo-300 border-indigo-500 z-20 scale-105' : isSelected ? 'ring-4 ring-blue-400 border-blue-500 bg-blue-50 shadow-lg z-10' : cardBgColor + ' ' + cardBorderColor}
+                ${isDragTarget ? 'ring-4 ring-indigo-300 border-indigo-500 z-20 scale-105' : isSelected ? 'ring-4 ring-blue-400 border-blue-500 bg-blue-50 shadow-lg z-10' : !cardBgHex ? 'bg-white border-slate-200' : ''}
             `}
-            style={colorBy === 'topic' && column?.customColor && visible && !isDragTarget && !isSelected ? {
-                borderColor: column.customColor + '80',
+            style={cardBgHex && !isDragTarget && !isSelected ? {
+                backgroundColor: cardBgHex,
+                borderColor: cardBgHex,
                 borderWidth: '2px'
             } : undefined}
         >
@@ -935,7 +950,7 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
                  />
             ) : (
                 <div className="relative">
-                    <div className={`text-sm w-full whitespace-pre-wrap break-words ${!visible ? 'ticket-blur' : 'text-slate-700'}`}>
+                    <div className={`text-sm w-full whitespace-pre-wrap break-words ${!visible ? 'ticket-blur' : cardTextColor}`}>
                         {t.text}
                     </div>
                     {visible && mode === 'BRAINSTORM' && (isMine || isFacilitator) && (
@@ -1419,9 +1434,6 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
                <div className="flex items-center space-x-3">
                    {(mode === 'BRAINSTORM' || mode === 'VOTE') && (
                        <div className="flex items-center space-x-2 mr-4">
-                            <div className={`px-3 py-1 rounded-full text-xs font-bold border ${finishedCount === totalMembers ? 'bg-emerald-100 text-emerald-700 border-emerald-300' : 'bg-white text-slate-500 border-slate-200'}`}>
-                                {finishedCount} / {totalMembers} Finished
-                            </div>
                             <button 
                                 onClick={() => updateSession(s => {
                                     if(!s.finishedUsers) s.finishedUsers = [];
@@ -2068,7 +2080,8 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
 
   // Render participants panel
   const renderParticipantsPanel = () => {
-    const isCollapsed = session.settings.participantsPanelCollapsed ?? false;
+    // Default to collapsed for participants, expanded for facilitators
+    const isCollapsed = session.settings.participantsPanelCollapsed ?? !isFacilitator;
 
     return (
       <div className={`bg-white border-l border-slate-200 flex flex-col shrink-0 hidden lg:flex transition-all ${isCollapsed ? 'w-12' : 'w-64'}`}>
