@@ -917,11 +917,11 @@ const Dashboard: React.FC<Props> = ({ team, currentUser, onOpenSession, onOpenHe
         <button onClick={() => setTab('MEMBERS')} className={`dash-tab px-6 py-3 font-bold text-sm flex items-center transition whitespace-nowrap ${tab === 'MEMBERS' ? 'active' : 'text-slate-500 hover:text-retro-primary'}`}>
             <span className="material-symbols-outlined mr-2">groups</span> Members
         </button>
-        <button onClick={() => setTab('FEEDBACK')} className={`dash-tab px-6 py-3 font-bold text-sm flex items-center transition whitespace-nowrap ${tab === 'FEEDBACK' ? 'active' : 'text-slate-500 hover:text-retro-primary'}`}>
-            <span className="material-symbols-outlined mr-2">feedback</span> Feedback
-        </button>
         <button onClick={() => setTab('SETTINGS')} className={`dash-tab px-6 py-3 font-bold text-sm flex items-center transition whitespace-nowrap ${tab === 'SETTINGS' ? 'active' : 'text-slate-500 hover:text-retro-primary'}`}>
             <span className="material-symbols-outlined mr-2">settings</span> Settings
+        </button>
+        <button onClick={() => setTab('FEEDBACK')} className={`dash-tab px-6 py-3 font-bold text-sm flex items-center transition whitespace-nowrap ${tab === 'FEEDBACK' ? 'active' : 'text-slate-500 hover:text-retro-primary'}`}>
+            <span className="material-symbols-outlined mr-2">feedback</span> Feedback
         </button>
       </div>
 
@@ -1470,6 +1470,10 @@ const Dashboard: React.FC<Props> = ({ team, currentUser, onOpenSession, onOpenHe
           feedbacks={team.teamFeedbacks || []}
           onSubmitFeedback={(feedback) => {
             dataService.createTeamFeedback(team.id, feedback);
+            onRefresh();
+          }}
+          onDeleteFeedback={(feedbackId) => {
+            dataService.deleteTeamFeedback(team.id, feedbackId);
             onRefresh();
           }}
         />

@@ -8,6 +8,7 @@ interface TeamFeedbackProps {
   currentUserName: string;
   feedbacks: TeamFeedbackType[];
   onSubmitFeedback: (feedback: Omit<TeamFeedbackType, 'id' | 'submittedAt' | 'isRead' | 'status'>) => void;
+  onDeleteFeedback: (feedbackId: string) => void;
 }
 
 const TeamFeedback: React.FC<TeamFeedbackProps> = ({
@@ -16,7 +17,8 @@ const TeamFeedback: React.FC<TeamFeedbackProps> = ({
   currentUserId,
   currentUserName,
   feedbacks,
-  onSubmitFeedback
+  onSubmitFeedback,
+  onDeleteFeedback
 }) => {
   const [showForm, setShowForm] = useState(false);
   const [type, setType] = useState<'bug' | 'feature'>('bug');
@@ -297,6 +299,23 @@ const TeamFeedback: React.FC<TeamFeedbackProps> = ({
                 <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded">
                   <p className="text-sm font-medium text-amber-800 mb-1">Admin note:</p>
                   <p className="text-sm text-amber-700">{feedback.adminNotes}</p>
+                </div>
+              )}
+
+              {/* Allow deletion if not read by admin OR if rejected */}
+              {(!feedback.isRead || feedback.status === 'rejected') && (
+                <div className="mt-3 pt-3 border-t border-slate-200">
+                  <button
+                    onClick={() => {
+                      if (confirm('Are you sure you want to delete this feedback?')) {
+                        onDeleteFeedback(feedback.id);
+                      }
+                    }}
+                    className="text-sm text-red-600 hover:text-red-700 font-medium flex items-center gap-1"
+                  >
+                    <span className="material-symbols-outlined text-sm">delete</span>
+                    Delete feedback
+                  </button>
                 </div>
               )}
             </div>
