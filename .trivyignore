@@ -1,0 +1,10 @@
+# Trivy ignore file
+# These vulnerabilities are in devDependencies only, not in production runtime
+
+# cross-spawn is only used in development (via eslint)
+# Not present in production dependencies
+CVE-2024-21538
+
+# glob is only used in development (via vitest/coverage)
+# Not present in production dependencies
+CVE-2025-64756

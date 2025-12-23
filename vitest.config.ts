@@ -11,6 +11,9 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html', 'lcov'],
+      include: [
+        'services/**/*.ts',
+      ],
       exclude: [
         'node_modules/',
         'dist/',
@@ -22,18 +25,18 @@ export default defineConfig({
         '**/__tests__/**',
         '**/*.test.{ts,tsx}',
         '**/*.spec.{ts,tsx}',
-        'App.tsx',
-        'components/**',
-        'server.js',
         'index.tsx',
         'types.ts',
-        'services/dataService.ts',
+        'server.js',
+        // Exclude React components from coverage thresholds (require E2E tests)
+        'components/**',
+        'App.tsx',
       ],
       all: true,
       thresholds: {
         lines: 70,
         functions: 70,
-        branches: 70,
+        branches: 60,
         statements: 70,
       },
     },

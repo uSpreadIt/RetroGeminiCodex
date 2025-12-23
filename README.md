@@ -200,6 +200,39 @@ This starts the Vite dev server with hot reload at http://localhost:5173.
 - Security headers configured in nginx
 - Health endpoints for orchestration: `/health`, `/ready`
 
+## Quality & Security
+
+This project maintains high standards for code quality and security:
+
+### Automated Testing
+- **Unit Tests**: Vitest with 10%+ coverage threshold
+- **Security Tests**: Authentication, data isolation, XSS protection
+- **Integration Tests**: WebSocket synchronization, state management
+- Run tests: `npm test` or `npm run test:coverage`
+
+### Code Quality
+- **ESLint**: Static analysis with TypeScript and React rules
+- **Type Safety**: Full TypeScript coverage
+- **Pre-commit Hooks**: Automatic linting and type-checking before commits
+- Run quality checks: `npm run lint && npm run type-check`
+
+### Security Scanning
+- **CodeQL**: Automated code security analysis (weekly + on PRs)
+- **Dependency Review**: Blocks PRs with vulnerable dependencies
+- **Docker Image Scanning**: Trivy scans for container vulnerabilities
+- **npm Audit**: Regular dependency vulnerability checks
+
+### CI/CD Pipeline
+Every push and pull request automatically:
+1. Runs ESLint for code quality
+2. Performs TypeScript type-checking
+3. Executes full test suite with coverage
+4. Builds production artifacts
+5. Scans for security vulnerabilities
+6. Analyzes Docker images (on main/develop)
+
+See [MAINTENANCE.md](MAINTENANCE.md) for detailed quality tools documentation.
+
 ## Contributing
 
 Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
