@@ -12,9 +12,12 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({ initialColor = '#6366F
   const [lightness, setLightness] = useState(60);
   const pickerRef = useRef<HTMLDivElement>(null);
   const isDraggingRef = useRef(false);
+  const isInitializedRef = useRef(false);
 
   useEffect(() => {
-    // Parse initial color to HSL
+    // Parse initial color to HSL only once on mount
+    if (isInitializedRef.current) return;
+
     const hex = initialColor.replace('#', '');
     const r = parseInt(hex.substr(0, 2), 16) / 255;
     const g = parseInt(hex.substr(2, 2), 16) / 255;
@@ -39,6 +42,7 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({ initialColor = '#6366F
     setHue(Math.round(h * 360));
     setSaturation(Math.round(s * 100));
     setLightness(Math.round(l * 100));
+    isInitializedRef.current = true;
   }, [initialColor]);
 
   const hslToHex = (h: number, s: number, l: number): string => {
@@ -77,20 +81,20 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({ initialColor = '#6366F
 
   const currentColor = hslToHex(hue, saturation, lightness);
 
-  useEffect(() => {
-    onChange(currentColor);
-  }, [hue, saturation, lightness]);
-
   const handleSatLightClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
 
-    const newSat = Math.round((x / rect.width) * 100);
-    const newLight = Math.round(100 - (y / rect.height) * 100);
+    const newSat = Math.max(0, Math.min(100, Math.round((x / rect.width) * 100)));
+    const newLight = Math.max(0, Math.min(100, Math.round(100 - (y / rect.height) * 100)));
 
-    setSaturation(Math.max(0, Math.min(100, newSat)));
-    setLightness(Math.max(0, Math.min(100, newLight)));
+    setSaturation(newSat);
+    setLightness(newLight);
+
+    // Call onChange with the new color
+    const newColor = hslToHex(hue, newSat, newLight);
+    onChange(newColor);
   };
 
   const handleSatLightDrag = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -145,7 +149,12 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({ initialColor = '#6366F
           min="0"
           max="360"
           value={hue}
-          onChange={(e) => setHue(parseInt(e.target.value))}
+          onChange={(e) => {
+            const newHue = parseInt(e.target.value);
+            setHue(newHue);
+            const newColor = hslToHex(newHue, saturation, lightness);
+            onChange(newColor);
+          }}
           className="w-full h-3 rounded-lg appearance-none cursor-pointer"
           style={{
             background: 'linear-gradient(to right, #ff0000 0%, #ffff00 17%, #00ff00 33%, #00ffff 50%, #0000ff 67%, #ff00ff 83%, #ff0000 100%)'
