@@ -192,7 +192,7 @@ export const IconPicker: React.FC<IconPickerProps> = ({ initialIcon = 'star', on
   const handleIconSelect = (iconName: string) => {
     setSelectedIcon(iconName);
     onChange(iconName);
-    // Auto-close après sélection
+    // Auto-close after selection
     if (onClose) {
       setTimeout(() => onClose(), 150);
     }
