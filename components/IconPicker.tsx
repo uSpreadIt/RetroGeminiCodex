@@ -192,10 +192,14 @@ export const IconPicker: React.FC<IconPickerProps> = ({ initialIcon = 'star', on
   const handleIconSelect = (iconName: string) => {
     setSelectedIcon(iconName);
     onChange(iconName);
+    // Auto-close après sélection
+    if (onClose) {
+      setTimeout(() => onClose(), 150);
+    }
   };
 
   return (
-    <div className="absolute z-50 bg-white rounded-lg shadow-2xl border border-gray-200 p-4 w-96 max-h-[600px] flex flex-col">
+    <div className="absolute z-50 bg-white rounded-lg shadow-2xl border border-gray-200 p-4 w-[600px] max-h-[600px] flex flex-col">
       <div className="flex justify-between items-center mb-3">
         <span className="font-medium text-gray-700">Pick an icon</span>
         {onClose && (
@@ -241,7 +245,7 @@ export const IconPicker: React.FC<IconPickerProps> = ({ initialIcon = 'star', on
 
       {/* Icon Grid */}
       <div className="flex-1 overflow-y-auto">
-        <div className="grid grid-cols-6 gap-2">
+        <div className="grid grid-cols-10 gap-2">
           {filteredIcons.map((icon) => (
             <button
               key={icon.name}
