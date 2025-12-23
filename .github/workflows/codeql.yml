@@ -39,5 +39,8 @@ jobs:
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3
+        # Continue on error if Advanced Security is not enabled
+        # To enable: Go to Settings > Code security and analysis > Enable GitHub Advanced Security
+        continue-on-error: true
         with:
           category: "/language:${{matrix.language}}"

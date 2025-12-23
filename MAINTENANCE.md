@@ -1,10 +1,10 @@
-# Guide de Maintenance - RetroGeminiCodex
+# Maintenance Guide - RetroGeminiCodex
 
-Ce guide explique comment utiliser les outils de qualité et de maintenance du projet.
+This guide explains how to use the project's quality and maintenance tools.
 
 ## 📦 Installation
 
-Après avoir cloné le dépôt, installez toutes les dépendances :
+After cloning the repository, install all dependencies:
 
 ```bash
 npm install
@@ -12,323 +12,323 @@ npm install
 
 ## 🧪 Tests
 
-### Exécuter les tests
+### Running Tests
 
 ```bash
-# Exécuter tous les tests une fois
+# Run all tests once
 npm test
 
-# Exécuter les tests en mode watch (re-run automatique)
+# Run tests in watch mode (automatic re-run)
 npm run test:watch
 
-# Exécuter les tests avec couverture de code
+# Run tests with code coverage
 npm run test:coverage
 
-# Exécuter les tests avec une interface graphique
+# Run tests with graphical interface
 npm run test:ui
 ```
 
-### Structure des tests
+### Test Structure
 
-Les tests sont organisés dans le répertoire `__tests__/` :
+Tests are organized in the `__tests__/` directory:
 
-- `__tests__/example.test.ts` - Exemples de tests de base
-- `__tests__/security.test.ts` - Tests de sécurité
-- `__tests__/App.test.tsx` - Tests des composants React
+- `__tests__/example.test.ts` - Basic test examples
+- `__tests__/security.test.ts` - Security tests
+- `__tests__/App.test.tsx` - React component tests
 
-### Écrire de nouveaux tests
+### Writing New Tests
 
 ```typescript
 import { describe, it, expect } from 'vitest';
 
-describe('Ma fonctionnalité', () => {
-  it('devrait faire quelque chose', () => {
+describe('My feature', () => {
+  it('should do something', () => {
     expect(1 + 1).toBe(2);
   });
 });
 ```
 
-Pour les composants React :
+For React components:
 
 ```typescript
 import { render, screen } from '@testing-library/react';
 import { describe, it, expect } from 'vitest';
-import MonComposant from './MonComposant';
+import MyComponent from './MyComponent';
 
-describe('MonComposant', () => {
-  it('devrait s\'afficher correctement', () => {
-    render(<MonComposant />);
+describe('MyComponent', () => {
+  it('should render correctly', () => {
+    render(<MyComponent />);
     expect(screen.getByText('Hello')).toBeInTheDocument();
   });
 });
 ```
 
-## 🔍 Analyse Statique (Linting)
+## 🔍 Static Analysis (Linting)
 
-### Exécuter ESLint
+### Running ESLint
 
 ```bash
-# Analyser le code
+# Analyze code
 npm run lint
 
-# Analyser et corriger automatiquement les erreurs
+# Analyze and automatically fix errors
 npm run lint:fix
 ```
 
-### Configuration ESLint
+### ESLint Configuration
 
-La configuration se trouve dans `eslint.config.js`. Elle inclut :
+The configuration is located in `eslint.config.js`. It includes:
 
-- Support TypeScript
-- Support React et React Hooks
-- Règles de sécurité
-- Règles de qualité du code
+- TypeScript support
+- React and React Hooks support
+- Security rules
+- Code quality rules
 
-## 📝 Vérification des Types TypeScript
+## 📝 TypeScript Type Checking
 
 ```bash
-# Vérifier les types sans générer de fichiers
+# Check types without generating files
 npm run type-check
 ```
 
-Cette commande vérifie que tout votre code TypeScript est correctement typé.
+This command verifies that all your TypeScript code is properly typed.
 
-## 🔒 Audits de Sécurité
+## 🔒 Security Audits
 
-### Audit des dépendances npm
+### npm Dependency Audit
 
 ```bash
-# Vérifier les vulnérabilités (niveau modéré et supérieur)
+# Check vulnerabilities (moderate level and above)
 npm run security:audit
 
-# Corriger automatiquement les vulnérabilités (quand possible)
+# Automatically fix vulnerabilities (when possible)
 npm run security:fix
 ```
 
-### Audit manuel
+### Manual Audit
 
 ```bash
-# Audit complet avec détails
+# Full audit with details
 npm audit
 
-# Audit avec niveau de sévérité spécifique
+# Audit with specific severity level
 npm audit --audit-level=high
 ```
 
 ## 🚀 CI/CD - GitHub Actions
 
-### Workflows Configurés
+### Configured Workflows
 
-Le projet utilise plusieurs workflows GitHub Actions :
+The project uses several GitHub Actions workflows:
 
-#### 1. CI Principal (`.github/workflows/ci.yml`)
+#### 1. Main CI (`.github/workflows/ci.yml`)
 
-**Déclenché sur** : Push et Pull Requests
+**Triggered on**: Push and Pull Requests
 
-**Étapes** :
-- ✅ Lint du code
-- ✅ Vérification TypeScript
-- ✅ Tests avec couverture
-- ✅ Build de production
-- ✅ Audit de sécurité
+**Steps**:
+- ✅ Code linting
+- ✅ TypeScript verification
+- ✅ Tests with coverage
+- ✅ Production build
+- ✅ Security audit
 
-**Matrices** : Teste sur Node.js 20.x et 22.x
+**Matrix**: Tests on Node.js 20.x and 22.x
 
 #### 2. CodeQL (`.github/workflows/codeql.yml`)
 
-**Déclenché sur** :
-- Push sur main/master/develop
+**Triggered on**:
+- Push to main/master/develop
 - Pull Requests
-- Tous les lundis à 6h UTC (automatique)
+- Every Monday at 6:00 AM UTC (automatic)
 
-**But** : Analyse de sécurité avancée du code
+**Purpose**: Advanced code security analysis
 
 #### 3. Dependency Review (`.github/workflows/dependency-review.yml`)
 
-**Déclenché sur** : Pull Requests
+**Triggered on**: Pull Requests
 
-**But** : Vérifie les nouvelles dépendances pour les vulnérabilités
+**Purpose**: Checks new dependencies for vulnerabilities
 
-### Voir les résultats CI
+### Viewing CI Results
 
-1. Allez sur l'onglet "Actions" de votre dépôt GitHub
-2. Cliquez sur un workflow pour voir les détails
-3. Les échecs sont marqués en rouge, les succès en vert
+1. Go to the "Actions" tab of your GitHub repository
+2. Click on a workflow to see details
+3. Failures are marked in red, successes in green
 
 ## 🤖 Dependabot
 
-Dependabot est configuré dans `.github/dependabot.yml` pour :
+Dependabot is configured in `.github/dependabot.yml` for:
 
-- **npm** : Vérification quotidienne des mises à jour
-- **GitHub Actions** : Vérification hebdomadaire
-- **Docker** : Vérification hebdomadaire
+- **npm**: Daily update checks
+- **GitHub Actions**: Weekly checks
+- **Docker**: Weekly checks
 
-### Gérer les PRs Dependabot
+### Managing Dependabot PRs
 
-Quand Dependabot crée une PR :
+When Dependabot creates a PR:
 
-1. Vérifiez que les tests CI passent
-2. Lisez le changelog si disponible
-3. Mergez la PR si tout est OK
-4. Ou commentez `@dependabot rebase` pour rebaser la PR
+1. Verify that CI tests pass
+2. Read the changelog if available
+3. Merge the PR if everything is OK
+4. Or comment `@dependabot rebase` to rebase the PR
 
-Commandes Dependabot utiles :
-- `@dependabot rebase` - Rebaser la PR
-- `@dependabot recreate` - Recréer la PR
-- `@dependabot merge` - Merger automatiquement
-- `@dependabot close` - Fermer la PR
-- `@dependabot ignore this dependency` - Ignorer cette dépendance
+Useful Dependabot commands:
+- `@dependabot rebase` - Rebase the PR
+- `@dependabot recreate` - Recreate the PR
+- `@dependabot merge` - Automatically merge
+- `@dependabot close` - Close the PR
+- `@dependabot ignore this dependency` - Ignore this dependency
 
-## 📊 Couverture de Code
+## 📊 Code Coverage
 
-### Objectifs de Couverture
+### Coverage Goals
 
-Le projet vise les objectifs suivants :
+The project aims for the following goals:
 
-- **Lignes** : 70% minimum
-- **Fonctions** : 70% minimum
-- **Branches** : 70% minimum
-- **Statements** : 70% minimum
+- **Lines**: 70% minimum
+- **Functions**: 70% minimum
+- **Branches**: 70% minimum
+- **Statements**: 70% minimum
 
-### Voir le rapport de couverture
+### Viewing Coverage Report
 
-Après avoir exécuté `npm run test:coverage` :
+After running `npm run test:coverage`:
 
 ```bash
-# Le rapport est disponible dans coverage/index.html
-# Ouvrez-le dans votre navigateur
+# The report is available in coverage/index.html
+# Open it in your browser
 open coverage/index.html  # macOS
 xdg-open coverage/index.html  # Linux
 start coverage/index.html  # Windows
 ```
 
-## 🔄 Workflow de Développement Recommandé
+## 🔄 Recommended Development Workflow
 
-### Avant de Commit
+### Before Committing
 
 ```bash
-# 1. Formater et corriger le code
+# 1. Format and fix code
 npm run lint:fix
 
-# 2. Vérifier les types
+# 2. Check types
 npm run type-check
 
-# 3. Lancer les tests
+# 3. Run tests
 npm test
 
-# 4. (Optionnel) Vérifier la couverture
+# 4. (Optional) Check coverage
 npm run test:coverage
 ```
 
-### Avant de Push
+### Before Pushing
 
 ```bash
-# Lancer le CI complet en local
+# Run full CI locally
 npm run ci
 
-# Ou individuellement :
+# Or individually:
 npm run lint
 npm run type-check
 npm run test
 npm run build
 ```
 
-### Créer une Pull Request
+### Creating a Pull Request
 
-1. Créez une branche depuis `develop` ou `main`
-2. Faites vos changements
-3. Commitez avec des messages clairs
-4. Pushez votre branche
-5. Créez une PR sur GitHub
-6. Attendez que tous les checks CI passent ✅
-7. Demandez une review si nécessaire
-8. Mergez quand approuvé
+1. Create a branch from `develop` or `main`
+2. Make your changes
+3. Commit with clear messages
+4. Push your branch
+5. Create a PR on GitHub
+6. Wait for all CI checks to pass ✅
+7. Request a review if necessary
+8. Merge when approved
 
-## 🛠️ Scripts npm Disponibles
+## 🛠️ Available npm Scripts
 
 | Script | Description |
 |--------|-------------|
-| `npm run dev` | Démarrer le serveur de développement Vite |
-| `npm run build` | Build de production |
-| `npm start` | Démarrer le serveur Node.js |
-| `npm test` | Exécuter les tests |
-| `npm run test:watch` | Tests en mode watch |
-| `npm run test:coverage` | Tests avec couverture |
-| `npm run test:ui` | Interface graphique pour les tests |
-| `npm run lint` | Analyser le code avec ESLint |
-| `npm run lint:fix` | Corriger automatiquement les erreurs ESLint |
-| `npm run type-check` | Vérifier les types TypeScript |
-| `npm run security:audit` | Audit de sécurité des dépendances |
-| `npm run security:fix` | Corriger les vulnérabilités |
-| `npm run ci` | Exécuter tous les checks CI en local |
+| `npm run dev` | Start Vite development server |
+| `npm run build` | Production build |
+| `npm start` | Start Node.js server |
+| `npm test` | Run tests |
+| `npm run test:watch` | Tests in watch mode |
+| `npm run test:coverage` | Tests with coverage |
+| `npm run test:ui` | Graphical interface for tests |
+| `npm run lint` | Analyze code with ESLint |
+| `npm run lint:fix` | Automatically fix ESLint errors |
+| `npm run type-check` | Check TypeScript types |
+| `npm run security:audit` | Security audit of dependencies |
+| `npm run security:fix` | Fix vulnerabilities |
+| `npm run ci` | Run all CI checks locally |
 
-## 📁 Structure des Fichiers de Configuration
+## 📁 Configuration File Structure
 
 ```
 .
 ├── .github/
 │   ├── workflows/
-│   │   ├── ci.yml                    # CI principal
-│   │   ├── codeql.yml                # Analyse de sécurité
-│   │   └── dependency-review.yml     # Review des dépendances
-│   └── dependabot.yml                # Configuration Dependabot
+│   │   ├── ci.yml                    # Main CI
+│   │   ├── codeql.yml                # Security analysis
+│   │   └── dependency-review.yml     # Dependency review
+│   └── dependabot.yml                # Dependabot configuration
 ├── __tests__/                        # Tests
-│   ├── example.test.ts               # Exemples de tests
-│   ├── security.test.ts              # Tests de sécurité
-│   └── App.test.tsx                  # Tests React
-├── eslint.config.js                  # Configuration ESLint
-├── vitest.config.ts                  # Configuration Vitest
-├── vitest.setup.ts                   # Setup des tests
-├── tsconfig.json                     # Configuration TypeScript
-└── package.json                      # Scripts et dépendances
+│   ├── example.test.ts               # Test examples
+│   ├── security.test.ts              # Security tests
+│   └── App.test.tsx                  # React tests
+├── eslint.config.js                  # ESLint configuration
+├── vitest.config.ts                  # Vitest configuration
+├── vitest.setup.ts                   # Test setup
+├── tsconfig.json                     # TypeScript configuration
+└── package.json                      # Scripts and dependencies
 ```
 
-## 🐛 Dépannage
+## 🐛 Troubleshooting
 
-### Les tests ne passent pas
+### Tests Failing
 
 ```bash
-# Nettoyer et réinstaller
+# Clean and reinstall
 rm -rf node_modules package-lock.json
 npm install
 npm test
 ```
 
-### ESLint trouve trop d'erreurs
+### Too Many ESLint Errors
 
 ```bash
-# Corriger automatiquement ce qui peut l'être
+# Fix what can be fixed automatically
 npm run lint:fix
 
-# Puis corriger manuellement le reste
+# Then manually fix the rest
 npm run lint
 ```
 
-### Les types TypeScript ne sont pas corrects
+### TypeScript Types Incorrect
 
 ```bash
-# Vérifier les erreurs de type
+# Check type errors
 npm run type-check
 
-# Parfois, redémarrer l'éditeur aide
-# Ou supprimer le cache TypeScript
+# Sometimes restarting the editor helps
+# Or delete TypeScript cache
 rm -rf .tsbuildinfo
 ```
 
-### npm audit trouve des vulnérabilités
+### npm audit Finds Vulnerabilities
 
 ```bash
-# Essayer de les corriger automatiquement
+# Try to fix them automatically
 npm audit fix
 
-# Si ça ne marche pas, forcer les mises à jour (attention !)
+# If that doesn't work, force updates (caution!)
 npm audit fix --force
 
-# Vérifier les vulnérabilités restantes
+# Check remaining vulnerabilities
 npm audit
 ```
 
-## 📚 Ressources
+## 📚 Resources
 
 - [Vitest Documentation](https://vitest.dev/)
 - [ESLint Documentation](https://eslint.org/)
@@ -337,42 +337,42 @@ npm audit
 - [Dependabot](https://docs.github.com/en/code-security/dependabot)
 - [CodeQL](https://codeql.github.com/)
 
-## 💡 Bonnes Pratiques
+## 💡 Best Practices
 
 ### Tests
 
-1. **Écrivez des tests pour chaque nouvelle fonctionnalité**
-2. **Visez 80%+ de couverture pour le code critique**
-3. **Testez les cas limites et les erreurs**
-4. **Utilisez des noms de tests descriptifs**
-5. **Gardez les tests simples et lisibles**
+1. **Write tests for each new feature**
+2. **Aim for 80%+ coverage for critical code**
+3. **Test edge cases and errors**
+4. **Use descriptive test names**
+5. **Keep tests simple and readable**
 
 ### Code Quality
 
-1. **Corrigez les erreurs ESLint avant de commit**
-2. **Utilisez TypeScript strict autant que possible**
-3. **Évitez `any` dans TypeScript**
-4. **Commentez le code complexe**
-5. **Gardez les fonctions petites et focalisées**
+1. **Fix ESLint errors before committing**
+2. **Use TypeScript strict mode as much as possible**
+3. **Avoid `any` in TypeScript**
+4. **Comment complex code**
+5. **Keep functions small and focused**
 
-### Sécurité
+### Security
 
-1. **Ne commitez jamais de secrets ou credentials**
-2. **Gardez les dépendances à jour**
-3. **Lisez les rapports de sécurité Dependabot**
-4. **Utilisez des variables d'environnement pour les secrets**
-5. **Validez toutes les entrées utilisateur**
+1. **Never commit secrets or credentials**
+2. **Keep dependencies up to date**
+3. **Read Dependabot security reports**
+4. **Use environment variables for secrets**
+5. **Validate all user inputs**
 
 ### CI/CD
 
-1. **Tous les tests doivent passer avant merge**
-2. **Vérifiez les rapports CodeQL régulièrement**
-3. **Mergez les PRs Dependabot rapidement**
-4. **Gardez les branches à jour avec main/develop**
-5. **Utilisez des messages de commit clairs**
+1. **All tests must pass before merging**
+2. **Check CodeQL reports regularly**
+3. **Merge Dependabot PRs quickly**
+4. **Keep branches up to date with main/develop**
+5. **Use clear commit messages**
 
 ---
 
-**Dernière mise à jour** : 2025-12-22
+**Last updated**: 2025-12-22
 
-Pour toute question, ouvrez une issue sur GitHub.
+For any questions, open an issue on GitHub.
