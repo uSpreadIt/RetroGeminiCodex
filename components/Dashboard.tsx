@@ -1239,14 +1239,14 @@ const Dashboard: React.FC<Props> = ({ team, currentUser, onOpenSession, onOpenHe
                         </thead>
                         <tbody>
                           {dimensions.map((dim) => (
-                            <tr key={dim.id} className="border-b border-slate-200">
-                              <td className="px-3 py-2 text-xs font-medium text-slate-700 sticky left-0 bg-white border-r border-slate-200 w-48" style={{ zIndex: 30 }}>
-                                <div className="flex items-center gap-1">
+                            <tr key={dim.id} className="border-b border-slate-200 relative" style={{ zIndex: 1 }}>
+                              <td className="px-3 py-2 text-xs font-medium text-slate-700 sticky left-0 bg-white border-r border-slate-200 w-48">
+                                <div className="flex items-center gap-1 relative">
                                   <span className="truncate" title={dim.name}>{dim.name}</span>
                                   {(dim.goodDescription || dim.badDescription) && (
-                                    <div className="relative inline-block group/info">
+                                    <div className="relative group/info" style={{ zIndex: 9999 }}>
                                       <span className="material-symbols-outlined text-xs text-slate-400 cursor-help hover:text-slate-600">info</span>
-                                      <div className="invisible group-hover/info:visible absolute left-full top-1/2 -translate-y-1/2 ml-2 w-72 bg-white border-2 border-slate-300 text-slate-800 text-xs rounded-lg p-3 shadow-2xl pointer-events-none" style={{ zIndex: 10000 }}>
+                                      <div className="invisible group-hover/info:visible absolute left-full top-1/2 -translate-y-1/2 ml-2 w-72 bg-white border-2 border-slate-300 text-slate-800 text-xs rounded-lg p-3 shadow-2xl pointer-events-none" style={{ zIndex: 9999 }}>
                                         {dim.goodDescription && (
                                           <div className="mb-2 bg-emerald-50 border border-emerald-200 rounded-lg p-2">
                                             <div className="font-bold text-emerald-700 mb-1">Good</div>
