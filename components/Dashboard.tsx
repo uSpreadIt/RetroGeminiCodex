@@ -222,13 +222,13 @@ const Dashboard: React.FC<Props> = ({ team, currentUser, onOpenSession, onOpenHe
   };
 
   // Health Check Handlers
-  const handleOpenNewHealthCheckModal = () => {
+  const handleOpenNewHealthCheckModal = (preselectedTemplateId?: string) => {
     const defaultName = getSuggestedName(
       healthChecks[0]?.name,
       `Health Check ${new Date().toLocaleDateString()}`
     );
     setHealthCheckName(defaultName);
-    setSelectedTemplateId(healthCheckTemplates[0]?.id || '');
+    setSelectedTemplateId(preselectedTemplateId || healthCheckTemplates[0]?.id || '');
     setIsHealthCheckAnonymous(false);
     setShowNewHealthCheckModal(true);
   };
@@ -1212,7 +1212,7 @@ const Dashboard: React.FC<Props> = ({ team, currentUser, onOpenSession, onOpenHe
                       <table className="w-full">
                         <thead>
                           <tr className="bg-slate-50 border-b border-slate-200">
-                            <th className="px-2 py-2 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wide sticky left-0 bg-slate-50 z-10 max-w-[140px]">
+                            <th className="px-2 py-2 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wide sticky left-0 bg-slate-50 z-20 w-40">
                               <button className="flex items-center text-slate-400 hover:text-slate-600">
                                 <span className="material-symbols-outlined text-sm">download</span>
                               </button>
@@ -1220,7 +1220,7 @@ const Dashboard: React.FC<Props> = ({ team, currentUser, onOpenSession, onOpenHe
                             {visibleChecks.map((hc) => {
                               const participantCount = Object.keys(hc.ratings).length;
                               return (
-                                <th key={hc.id} className="px-2 py-2 text-center min-w-[70px]">
+                                <th key={hc.id} className="px-2 py-2 text-left w-20">
                                   <div className="text-xs font-bold text-slate-700 truncate">{hc.name}</div>
                                   <div className="text-[9px] text-slate-400">{hc.date}</div>
                                   <div className="text-[9px] text-slate-400">
@@ -1229,10 +1229,10 @@ const Dashboard: React.FC<Props> = ({ team, currentUser, onOpenSession, onOpenHe
                                 </th>
                               );
                             })}
-                            <th className="px-2 py-2 text-center min-w-[50px]">
+                            <th className="px-2 py-2 text-left w-16">
                               <button
-                                onClick={handleOpenNewHealthCheckModal}
-                                className="text-cyan-600 hover:text-cyan-700 flex flex-col items-center justify-center w-full"
+                                onClick={() => handleOpenNewHealthCheckModal(group.templateId)}
+                                className="text-cyan-600 hover:text-cyan-700 flex flex-col items-start justify-center w-full"
                               >
                                 <span className="material-symbols-outlined text-xl">add</span>
                               </button>
@@ -1242,23 +1242,23 @@ const Dashboard: React.FC<Props> = ({ team, currentUser, onOpenSession, onOpenHe
                         <tbody>
                           {dimensions.map((dim) => (
                             <tr key={dim.id} className="border-b border-slate-100 hover:bg-slate-50">
-                              <td className="px-2 py-1.5 text-xs font-medium text-slate-700 sticky left-0 bg-white z-10 max-w-[140px]">
+                              <td className="px-2 py-1.5 text-xs font-medium text-slate-700 sticky left-0 bg-white z-20 w-40">
                                 <div className="flex items-center gap-1 group">
                                   <span className="truncate" title={dim.name}>{dim.name}</span>
                                   {(dim.goodDescription || dim.badDescription) && (
                                     <div className="relative">
                                       <span className="material-symbols-outlined text-xs text-slate-400 cursor-help peer">info</span>
-                                      <div className="invisible peer-hover:visible absolute left-full top-1/2 -translate-y-1/2 ml-2 w-64 bg-slate-800 text-white text-xs rounded-lg p-3 shadow-lg z-50 pointer-events-none">
+                                      <div className="invisible peer-hover:visible absolute left-full top-1/2 -translate-y-1/2 ml-2 w-64 bg-white border border-slate-200 text-slate-800 text-xs rounded-lg p-3 shadow-xl z-[100] pointer-events-none">
                                         {dim.goodDescription && (
-                                          <div className="mb-2">
-                                            <div className="font-bold text-emerald-300 mb-1">Good</div>
-                                            <div className="text-slate-200">{dim.goodDescription}</div>
+                                          <div className="mb-2 bg-emerald-50 border border-emerald-200 rounded-lg p-2">
+                                            <div className="font-bold text-emerald-700 mb-1">Good</div>
+                                            <div className="text-slate-700">{dim.goodDescription}</div>
                                           </div>
                                         )}
                                         {dim.badDescription && (
-                                          <div>
-                                            <div className="font-bold text-rose-300 mb-1">Bad</div>
-                                            <div className="text-slate-200">{dim.badDescription}</div>
+                                          <div className="bg-rose-50 border border-rose-200 rounded-lg p-2">
+                                            <div className="font-bold text-rose-700 mb-1">Bad</div>
+                                            <div className="text-slate-700">{dim.badDescription}</div>
                                           </div>
                                         )}
                                       </div>
@@ -1273,30 +1273,60 @@ const Dashboard: React.FC<Props> = ({ team, currentUser, onOpenSession, onOpenHe
                                 const totalVotes = Object.values(distribution).reduce((a, b) => a + b, 0);
 
                                 if (score === undefined || score === 0) {
-                                  return <td key={hc.id} className="px-2 py-1.5 text-center text-slate-300 text-xs">-</td>;
+                                  return <td key={hc.id} className="px-2 py-1.5 text-left text-slate-300 text-xs w-20">-</td>;
                                 }
+
+                                // Calculate percentages for visual layers
+                                const layers = [5, 4, 3, 2, 1].map(rating => ({
+                                  rating,
+                                  count: distribution[rating] || 0,
+                                  percentage: totalVotes > 0 ? ((distribution[rating] || 0) / totalVotes) * 100 : 0,
+                                  color: rating === 5 ? '#10B981' : rating === 4 ? '#34D399' : rating === 3 ? '#FBBF24' : rating === 2 ? '#F97316' : '#DC2626'
+                                }));
+
                                 return (
-                                  <td key={hc.id} className="px-2 py-1.5 relative group/cell">
-                                    <div className={`mx-auto w-8 h-8 rounded ${getScoreColor(score)} text-white flex items-center justify-center font-bold text-sm cursor-help`}>
-                                      {score.toFixed(1)}
+                                  <td key={hc.id} className="px-2 py-1.5 relative group/cell w-20">
+                                    <div className="relative w-12 h-8 rounded overflow-hidden border border-slate-300">
+                                      {/* Visual evolution layers */}
+                                      <div className="absolute inset-0 flex">
+                                        {layers.map(layer => layer.count > 0 && (
+                                          <div
+                                            key={layer.rating}
+                                            className="h-full transition-all"
+                                            style={{
+                                              width: `${layer.percentage}%`,
+                                              backgroundColor: layer.color
+                                            }}
+                                            title={`${layer.rating}: ${layer.count}`}
+                                          />
+                                        ))}
+                                      </div>
+                                      {/* Score overlay */}
+                                      <div className="absolute inset-0 flex items-center justify-center">
+                                        <span className="text-white font-bold text-xs drop-shadow-[0_1px_1px_rgba(0,0,0,0.8)]">
+                                          {score.toFixed(1)}
+                                        </span>
+                                      </div>
                                     </div>
+                                    {/* Hover tooltip with detailed distribution */}
                                     {totalVotes > 0 && (
-                                      <div className="invisible group-hover/cell:visible absolute left-1/2 top-full mt-2 -translate-x-1/2 bg-slate-900 text-white text-xs rounded-lg p-3 shadow-xl z-50 pointer-events-none min-w-[180px]">
+                                      <div className="invisible group-hover/cell:visible absolute left-0 top-full mt-2 bg-white border border-slate-300 text-slate-800 text-xs rounded-lg p-3 shadow-xl z-[100] pointer-events-none min-w-[200px]">
                                         <div className="space-y-1.5">
                                           {[5, 4, 3, 2, 1].map(rating => {
                                             const count = distribution[rating] || 0;
                                             const percentage = totalVotes > 0 ? (count / totalVotes) * 100 : 0;
-                                            const barColor = rating === 5 ? 'bg-emerald-500' : rating === 4 ? 'bg-emerald-400' : rating === 3 ? 'bg-amber-400' : rating === 2 ? 'bg-orange-500' : 'bg-rose-600';
+                                            const bgColor = rating === 5 ? 'bg-emerald-600' : rating === 4 ? 'bg-emerald-400' : rating === 3 ? 'bg-amber-500' : rating === 2 ? 'bg-orange-500' : 'bg-rose-600';
+                                            const badgeBg = rating === 5 ? 'bg-emerald-100 text-emerald-700' : rating === 4 ? 'bg-emerald-50 text-emerald-600' : rating === 3 ? 'bg-amber-100 text-amber-700' : rating === 2 ? 'bg-orange-100 text-orange-700' : 'bg-rose-100 text-rose-700';
                                             return (
                                               <div key={rating} className="flex items-center gap-2">
                                                 <div className="flex items-center gap-1 w-16">
-                                                  <span className={`w-5 h-5 rounded-full ${barColor} text-white flex items-center justify-center text-xs font-bold`}>
+                                                  <span className={`w-5 h-5 rounded-full ${bgColor} text-white flex items-center justify-center text-xs font-bold`}>
                                                     {rating}
                                                   </span>
-                                                  <span className="text-slate-300 text-xs">{count}</span>
+                                                  <span className={`px-1.5 py-0.5 rounded text-xs font-bold ${badgeBg}`}>{count}</span>
                                                 </div>
-                                                <div className="flex-1 bg-slate-700 rounded-full h-2 overflow-hidden">
-                                                  <div className={`h-full ${barColor} transition-all`} style={{ width: `${percentage}%` }}></div>
+                                                <div className="flex-1 bg-slate-200 rounded-full h-2 overflow-hidden">
+                                                  <div className={`h-full ${bgColor} transition-all`} style={{ width: `${percentage}%` }}></div>
                                                 </div>
                                               </div>
                                             );
@@ -1307,7 +1337,7 @@ const Dashboard: React.FC<Props> = ({ team, currentUser, onOpenSession, onOpenHe
                                   </td>
                                 );
                               })}
-                              <td className="px-2 py-1.5"></td>
+                              <td className="px-2 py-1.5 w-16"></td>
                             </tr>
                           ))}
                         </tbody>
