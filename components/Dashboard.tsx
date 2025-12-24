@@ -1213,9 +1213,7 @@ const Dashboard: React.FC<Props> = ({ team, currentUser, onOpenSession, onOpenHe
                         <thead>
                           <tr className="bg-slate-50 border-b border-slate-200">
                             <th className="px-3 py-2 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wide sticky left-0 bg-slate-50 z-20 w-48">
-                              <button className="flex items-center text-slate-400 hover:text-slate-600">
-                                <span className="material-symbols-outlined text-sm">download</span>
-                              </button>
+                              Dimension
                             </th>
                             {visibleChecks.map((hc) => {
                               const participantCount = Object.keys(hc.ratings).length;
@@ -1243,12 +1241,12 @@ const Dashboard: React.FC<Props> = ({ team, currentUser, onOpenSession, onOpenHe
                           {dimensions.map((dim) => (
                             <tr key={dim.id} className="border-b border-slate-200">
                               <td className="px-3 py-2 text-xs font-medium text-slate-700 sticky left-0 bg-white border-r border-slate-200 w-48" style={{ zIndex: 30 }}>
-                                <div className="flex items-center gap-1 group">
+                                <div className="flex items-center gap-1">
                                   <span className="truncate" title={dim.name}>{dim.name}</span>
                                   {(dim.goodDescription || dim.badDescription) && (
-                                    <div className="relative inline-block">
+                                    <div className="relative inline-block group/info">
                                       <span className="material-symbols-outlined text-xs text-slate-400 cursor-help hover:text-slate-600">info</span>
-                                      <div className="invisible group-hover:visible absolute left-full top-1/2 -translate-y-1/2 ml-2 w-72 bg-white border-2 border-slate-300 text-slate-800 text-xs rounded-lg p-3 shadow-2xl pointer-events-none" style={{ zIndex: 9999 }}>
+                                      <div className="invisible group-hover/info:visible absolute left-full top-1/2 -translate-y-1/2 ml-2 w-72 bg-white border-2 border-slate-300 text-slate-800 text-xs rounded-lg p-3 shadow-2xl pointer-events-none" style={{ zIndex: 10000 }}>
                                         {dim.goodDescription && (
                                           <div className="mb-2 bg-emerald-50 border border-emerald-200 rounded-lg p-2">
                                             <div className="font-bold text-emerald-700 mb-1">Good</div>
@@ -1273,17 +1271,44 @@ const Dashboard: React.FC<Props> = ({ team, currentUser, onOpenSession, onOpenHe
                                 const totalVotes = Object.values(distribution).reduce((a, b) => a + b, 0);
 
                                 if (score === undefined || score === 0) {
-                                  return <td key={hc.id} className="px-3 py-2 text-left text-slate-400 text-xs border-r border-slate-200 w-24">-</td>;
+                                  return <td key={hc.id} className="px-3 py-2 text-center text-slate-400 text-xs border-r border-slate-200 w-24">-</td>;
                                 }
+
+                                // Calculate percentages for visual layers (waves)
+                                const layers = [5, 4, 3, 2, 1].map(rating => ({
+                                  rating,
+                                  count: distribution[rating] || 0,
+                                  percentage: totalVotes > 0 ? ((distribution[rating] || 0) / totalVotes) * 100 : 0,
+                                  color: rating === 5 ? '#10B981' : rating === 4 ? '#34D399' : rating === 3 ? '#FBBF24' : rating === 2 ? '#F97316' : '#DC2626'
+                                }));
 
                                 return (
                                   <td key={hc.id} className="px-3 py-2 relative group/cell border-r border-slate-200 w-24">
-                                    <div className={`w-14 h-7 rounded ${getScoreColor(score)} text-white flex items-center justify-center font-bold text-sm shadow-sm`}>
-                                      {score.toFixed(1)}
+                                    <div className="relative w-full h-8 rounded overflow-hidden border border-slate-300 flex items-center justify-center">
+                                      {/* Visual evolution layers (waves) */}
+                                      <div className="absolute inset-0 flex">
+                                        {layers.map(layer => layer.count > 0 && (
+                                          <div
+                                            key={layer.rating}
+                                            className="h-full transition-all"
+                                            style={{
+                                              width: `${layer.percentage}%`,
+                                              backgroundColor: layer.color
+                                            }}
+                                            title={`${layer.rating}: ${layer.count}`}
+                                          />
+                                        ))}
+                                      </div>
+                                      {/* Score overlay - centered */}
+                                      <div className="absolute inset-0 flex items-center justify-center">
+                                        <span className="text-white font-bold text-sm drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]">
+                                          {score.toFixed(1)}
+                                        </span>
+                                      </div>
                                     </div>
                                     {/* Hover tooltip with detailed distribution */}
                                     {totalVotes > 0 && (
-                                      <div className="invisible group-hover/cell:visible absolute left-0 top-full mt-2 bg-white border-2 border-slate-300 text-slate-800 text-xs rounded-lg p-3 shadow-2xl pointer-events-none min-w-[200px]" style={{ zIndex: 9999 }}>
+                                      <div className="invisible group-hover/cell:visible absolute left-0 top-full mt-2 bg-white border-2 border-slate-300 text-slate-800 text-xs rounded-lg p-3 shadow-2xl pointer-events-none min-w-[200px]" style={{ zIndex: 10000 }}>
                                         <div className="space-y-1.5">
                                           {[5, 4, 3, 2, 1].map(rating => {
                                             const count = distribution[rating] || 0;
