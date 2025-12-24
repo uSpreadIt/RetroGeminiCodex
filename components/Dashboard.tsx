@@ -1208,7 +1208,7 @@ const Dashboard: React.FC<Props> = ({ team, currentUser, onOpenSession, onOpenHe
                         )}
                       </div>
                     </div>
-                    <div className="overflow-x-auto">
+                    <div className="overflow-visible">
                       <table className="w-full table-fixed">
                         <thead>
                           <tr className="bg-slate-50 border-b border-slate-200">
