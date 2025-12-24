@@ -1181,7 +1181,7 @@ const Dashboard: React.FC<Props> = ({ team, currentUser, onOpenSession, onOpenHe
                 const hasNewer = offset > 0;
 
                 return (
-                  <div key={group.templateId} className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden mb-6">
+                  <div key={group.templateId} className="bg-white border border-slate-200 rounded-xl shadow-sm mb-6">
                     <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 bg-slate-50">
                       <div>
                         <div className="text-sm font-bold text-slate-700">{group.templateName}</div>
@@ -1208,7 +1208,7 @@ const Dashboard: React.FC<Props> = ({ team, currentUser, onOpenSession, onOpenHe
                         )}
                       </div>
                     </div>
-                    <div>
+                    <div className="overflow-x-auto">
                       <table className="w-full table-fixed">
                         <thead>
                           <tr className="bg-slate-50 border-b border-slate-200">
