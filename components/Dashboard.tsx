@@ -1241,7 +1241,7 @@ const Dashboard: React.FC<Props> = ({ team, currentUser, onOpenSession, onOpenHe
                                   <button
                                     type="button"
                                     onClick={() => onOpenHealthCheck(hc.id)}
-                                    className="text-xs font-bold text-slate-700 truncate text-left hover:text-cyan-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 rounded"
+                                    className="block w-full text-xs font-bold text-slate-700 truncate text-left leading-tight hover:text-cyan-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 rounded"
                                     title={`Open ${hc.name}`}
                                   >
                                     {hc.name}
