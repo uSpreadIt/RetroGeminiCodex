@@ -320,6 +320,7 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
         mergedSession.tickets = mergedSession.tickets.map(ticket => {
           const prevTicket = prevSession.tickets.find(t => t.id === ticket.id);
           if (!prevTicket) return ticket;
+          if (updatedSession.settings.oneVotePerTicket) return ticket;
 
           // Get current user's votes from previous state
           const prevUserVotes = prevTicket.votes.filter(v => v === currentUser.id);
@@ -335,6 +336,7 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
         mergedSession.groups = mergedSession.groups.map(group => {
           const prevGroup = prevSession.groups.find(g => g.id === group.id);
           if (!prevGroup) return group;
+          if (updatedSession.settings.oneVotePerTicket) return group;
 
           // Get current user's votes from previous state
           const prevUserVotes = prevGroup.votes.filter(v => v === currentUser.id);
@@ -683,20 +685,26 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
       updateSession(s => {
           s.settings.oneVotePerTicket = checked;
           if (checked) {
-              const roster = getParticipants();
-              roster.forEach(member => {
+              const memberIds = new Set<string>();
+              s.participants?.forEach(p => memberIds.add(p.id));
+              team.members.forEach(m => memberIds.add(m.id));
+              (team.archivedMembers || []).forEach(m => memberIds.add(m.id));
+              s.tickets.forEach(t => t.votes.forEach(v => memberIds.add(v)));
+              s.groups.forEach(g => g.votes.forEach(v => memberIds.add(v)));
+
+              memberIds.forEach(memberId => {
                   s.tickets.forEach(t => {
-                      const userVotes = t.votes.filter(id => id === member.id);
+                      const userVotes = t.votes.filter(id => id === memberId);
                       if(userVotes.length > 1) {
-                          t.votes = t.votes.filter(id => id !== member.id);
-                          t.votes.push(member.id);
+                          t.votes = t.votes.filter(id => id !== memberId);
+                          t.votes.push(memberId);
                       }
                   });
                   s.groups.forEach(g => {
-                      const userVotes = g.votes.filter(id => id === member.id);
+                      const userVotes = g.votes.filter(id => id === memberId);
                       if(userVotes.length > 1) {
-                          g.votes = g.votes.filter(id => id !== member.id);
-                          g.votes.push(member.id);
+                          g.votes = g.votes.filter(id => id !== memberId);
+                          g.votes.push(memberId);
                       }
                   });
               });
