@@ -1194,7 +1194,7 @@ const Dashboard: React.FC<Props> = ({ team, currentUser, onOpenSession, onOpenHe
                             className="p-1 text-slate-500 hover:text-cyan-600 hover:bg-cyan-50 rounded transition"
                             title="Show newer"
                           >
-                            <span className="material-symbols-outlined text-lg">chevron_right</span>
+                            <span className="material-symbols-outlined text-lg">chevron_left</span>
                           </button>
                         )}
                         {hasOlder && (
@@ -1203,7 +1203,7 @@ const Dashboard: React.FC<Props> = ({ team, currentUser, onOpenSession, onOpenHe
                             className="p-1 text-slate-500 hover:text-cyan-600 hover:bg-cyan-50 rounded transition"
                             title="Show older"
                           >
-                            <span className="material-symbols-outlined text-lg">chevron_left</span>
+                            <span className="material-symbols-outlined text-lg">chevron_right</span>
                           </button>
                         )}
                       </div>
