@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Team, User, RetroSession, Column, HealthCheckSession, HealthCheckTemplate, HealthCheckDimension, TeamFeedback as TeamFeedbackType } from '../types';
 import { dataService } from '../services/dataService';
 import { ColorPicker } from './ColorPicker';
@@ -32,6 +32,7 @@ const Dashboard: React.FC<Props> = ({ team, currentUser, onOpenSession, onOpenHe
   const [selectedTemplateId, setSelectedTemplateId] = useState('');
   const [isHealthCheckAnonymous, setIsHealthCheckAnonymous] = useState(false);
   const [healthCheckOffsets, setHealthCheckOffsets] = useState<Record<string, number>>({});
+  const MAX_VISIBLE_HEALTH_CHECKS = 6;
 
   // Settings State - Custom Template Editor
   const [showTemplateEditor, setShowTemplateEditor] = useState(false);
@@ -61,6 +62,24 @@ const Dashboard: React.FC<Props> = ({ team, currentUser, onOpenSession, onOpenHe
 
     return Array.from(map.values());
   }, [orderedHealthChecks]);
+
+  useEffect(() => {
+    if (tab !== 'HEALTH_CHECKS') return;
+
+    setHealthCheckOffsets(prev => {
+      let changed = false;
+      const next = { ...prev };
+
+      healthChecksByTemplate.forEach(group => {
+        if (next[group.templateId] == null) {
+          next[group.templateId] = Math.max(0, group.checks.length - MAX_VISIBLE_HEALTH_CHECKS);
+          changed = true;
+        }
+      });
+
+      return changed ? next : prev;
+    });
+  }, [healthChecksByTemplate, tab]);
 
   // Action Creation State
   const [newActionText, setNewActionText] = useState('');
@@ -1174,8 +1193,8 @@ const Dashboard: React.FC<Props> = ({ team, currentUser, onOpenSession, onOpenHe
                 })();
 
                 // Pagination logic - show max 6 health checks at a time
-                const MAX_VISIBLE = 6;
-                const offset = healthCheckOffsets[group.templateId] || 0;
+                const MAX_VISIBLE = MAX_VISIBLE_HEALTH_CHECKS;
+                const offset = healthCheckOffsets[group.templateId] ?? Math.max(0, group.checks.length - MAX_VISIBLE);
                 const visibleChecks = group.checks.slice(offset, offset + MAX_VISIBLE);
                 const hasOlder = offset + MAX_VISIBLE < group.checks.length;
                 const hasNewer = offset > 0;
@@ -1219,7 +1238,14 @@ const Dashboard: React.FC<Props> = ({ team, currentUser, onOpenSession, onOpenHe
                               const participantCount = Object.keys(hc.ratings).length;
                               return (
                                 <th key={hc.id} className="px-3 py-2 text-left w-24">
-                                  <div className="text-xs font-bold text-slate-700 truncate">{hc.name}</div>
+                                  <button
+                                    type="button"
+                                    onClick={() => onOpenHealthCheck(hc.id)}
+                                    className="text-xs font-bold text-slate-700 truncate text-left hover:text-cyan-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 rounded"
+                                    title={`Open ${hc.name}`}
+                                  >
+                                    {hc.name}
+                                  </button>
                                   <div className="text-[9px] text-slate-400">{hc.date}</div>
                                   <div className="text-[9px] text-slate-400">
                                     <span className="material-symbols-outlined text-[10px] align-middle">people</span> {participantCount}
