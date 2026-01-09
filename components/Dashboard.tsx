@@ -1209,19 +1209,19 @@ const Dashboard: React.FC<Props> = ({ team, currentUser, onOpenSession, onOpenHe
                       <div className="flex items-center gap-2">
                         <button
                           onClick={() => hasNewer && setHealthCheckOffsets(prev => ({ ...prev, [group.templateId]: Math.max(0, offset - 1) }))}
-                          className={`p-1 text-slate-500 hover:text-cyan-600 hover:bg-cyan-50 rounded transition ${hasNewer ? '' : 'opacity-0 pointer-events-none'}`}
+                          className={`p-1 rounded transition ${hasNewer ? 'text-slate-500 hover:text-cyan-600 hover:bg-cyan-50' : 'text-slate-300 cursor-not-allowed'}`}
                           title="Show newer"
                           disabled={!hasNewer}
-                          aria-hidden={!hasNewer}
+                          aria-disabled={!hasNewer}
                         >
                           <span className="material-symbols-outlined text-lg">chevron_left</span>
                         </button>
                         <button
                           onClick={() => hasOlder && setHealthCheckOffsets(prev => ({ ...prev, [group.templateId]: offset + 1 }))}
-                          className={`p-1 text-slate-500 hover:text-cyan-600 hover:bg-cyan-50 rounded transition ${hasOlder ? '' : 'opacity-0 pointer-events-none'}`}
+                          className={`p-1 rounded transition ${hasOlder ? 'text-slate-500 hover:text-cyan-600 hover:bg-cyan-50' : 'text-slate-300 cursor-not-allowed'}`}
                           title="Show older"
                           disabled={!hasOlder}
-                          aria-hidden={!hasOlder}
+                          aria-disabled={!hasOlder}
                         >
                           <span className="material-symbols-outlined text-lg">chevron_right</span>
                         </button>
