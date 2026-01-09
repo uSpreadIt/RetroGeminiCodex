@@ -76,6 +76,9 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
   const [showInvite, setShowInvite] = useState(false);
   const [draggedTicket, setDraggedTicket] = useState<Ticket | null>(null);
   const [isTouchDragging, setIsTouchDragging] = useState(false);
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
+  const touchMovedRef = useRef(false);
+  const pendingTouchTicketRef = useRef<Ticket | null>(null);
 
   // Drag Target State for explicit visual cues
   const [dragTarget, setDragTarget] = useState<{ type: 'COLUMN' | 'ITEM', id: string } | null>(null);
@@ -1040,7 +1043,36 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
             onDragEnd={() => resetDragState()}
             onDragOver={(e) => mode === 'GROUP' ? handleDragOverItem(e, t.id) : undefined}
             onDrop={(e) => handleDropOnTicket(e, t)}
-            onTouchStart={() => mode === 'GROUP' ? handleTouchStart(t) : undefined}
+            onTouchStart={(e) => {
+                if (mode !== 'GROUP') return;
+                const touch = e.touches[0];
+                if (!touch) return;
+                touchStartRef.current = { x: touch.clientX, y: touch.clientY };
+                touchMovedRef.current = false;
+                pendingTouchTicketRef.current = t;
+            }}
+            onTouchMove={(e) => {
+                if (mode !== 'GROUP') return;
+                const touch = e.touches[0];
+                const start = touchStartRef.current;
+                if (!touch || !start) return;
+                const dx = touch.clientX - start.x;
+                const dy = touch.clientY - start.y;
+                if (Math.hypot(dx, dy) > 8) {
+                    touchMovedRef.current = true;
+                    pendingTouchTicketRef.current = null;
+                }
+            }}
+            onTouchEnd={() => {
+                if (mode !== 'GROUP') return;
+                const pendingTicket = pendingTouchTicketRef.current;
+                if (!touchMovedRef.current && pendingTicket) {
+                    handleTouchStart(pendingTicket);
+                }
+                touchStartRef.current = null;
+                touchMovedRef.current = false;
+                pendingTouchTicketRef.current = null;
+            }}
             onClick={(e) => {
                 if (mode !== 'GROUP' || !isTouchDragging) return;
                 const target = e.target as HTMLElement;
