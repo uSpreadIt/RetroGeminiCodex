@@ -862,7 +862,11 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
 
   const performDropOnTicket = (targetTicket: Ticket) => {
       setDragTarget(null);
-      if(!draggedTicket || draggedTicket.id === targetTicket.id) return;
+      if(!draggedTicket) return;
+      if (draggedTicket.id === targetTicket.id) {
+          resetDragState();
+          return;
+      }
       if(session.phase !== 'GROUP') return;
 
       updateSession(s => {
@@ -906,6 +910,10 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
   const performDropOnGroup = (targetGroup: Group) => {
       setDragTarget(null);
       if(!draggedTicket) return;
+      if (draggedTicket.groupId === targetGroup.id) {
+          resetDragState();
+          return;
+      }
       if(session.phase !== 'GROUP') return;
 
       updateSession(s => {
