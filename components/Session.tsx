@@ -862,7 +862,15 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
 
   const performDropOnTicket = (targetTicket: Ticket) => {
       setDragTarget(null);
-      if(!draggedTicket || draggedTicket.id === targetTicket.id) return;
+      if(!draggedTicket) return;
+      if (draggedTicket.id === targetTicket.id) {
+          resetDragState();
+          return;
+      }
+      if (draggedTicket.groupId && draggedTicket.groupId === targetTicket.groupId) {
+          resetDragState();
+          return;
+      }
       if(session.phase !== 'GROUP') return;
 
       updateSession(s => {
@@ -906,6 +914,10 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
   const performDropOnGroup = (targetGroup: Group) => {
       setDragTarget(null);
       if(!draggedTicket) return;
+      if (draggedTicket.groupId === targetGroup.id) {
+          resetDragState();
+          return;
+      }
       if(session.phase !== 'GROUP') return;
 
       updateSession(s => {
@@ -1025,6 +1037,7 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
             key={t.id}
             draggable={mode === 'GROUP'}
             onDragStart={(e) => handleDragStart(e, t)}
+            onDragEnd={() => resetDragState()}
             onDragOver={(e) => mode === 'GROUP' ? handleDragOverItem(e, t.id) : undefined}
             onDrop={(e) => handleDropOnTicket(e, t)}
             onTouchStart={() => mode === 'GROUP' ? handleTouchStart(t) : undefined}
@@ -1636,6 +1649,13 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
                                 ${isColumnDragTarget ? 'border-indigo-500 bg-indigo-50 border-2' : 'border-slate-200'}
                             `}
                             onDragOver={(e) => mode === 'GROUP' ? handleDragOverColumn(e, col.id) : e.preventDefault()}
+                            onDragLeave={(e) => {
+                                if (mode !== 'GROUP') return;
+                                const nextTarget = e.relatedTarget as Node | null;
+                                if (!nextTarget || !e.currentTarget.contains(nextTarget)) {
+                                    setDragTarget(null);
+                                }
+                            }}
                             onDrop={(e) => handleDropOnColumn(e, col.id)}
                         >
                             {/* Explicit Drop Overlay for Columns */}
