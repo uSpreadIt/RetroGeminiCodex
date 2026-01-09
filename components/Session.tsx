@@ -1649,6 +1649,13 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
                                 ${isColumnDragTarget ? 'border-indigo-500 bg-indigo-50 border-2' : 'border-slate-200'}
                             `}
                             onDragOver={(e) => mode === 'GROUP' ? handleDragOverColumn(e, col.id) : e.preventDefault()}
+                            onDragLeave={(e) => {
+                                if (mode !== 'GROUP') return;
+                                const nextTarget = e.relatedTarget as Node | null;
+                                if (!nextTarget || !e.currentTarget.contains(nextTarget)) {
+                                    setDragTarget(null);
+                                }
+                            }}
                             onDrop={(e) => handleDropOnColumn(e, col.id)}
                         >
                             {/* Explicit Drop Overlay for Columns */}
