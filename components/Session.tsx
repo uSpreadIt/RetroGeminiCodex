@@ -129,6 +129,11 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
 
   // Audio ref
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.volume = 0.5;
+    }
+  }, []);
 
   const getAnonymizedLabel = (memberId: string) => {
     if (!session?.settings.isAnonymous) return null;
