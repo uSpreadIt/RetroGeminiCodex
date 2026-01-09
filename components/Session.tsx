@@ -100,6 +100,8 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
   // Local state for debounced inputs to prevent sync conflicts
   const [localIcebreakerQuestion, setLocalIcebreakerQuestion] = useState<string | null>(null);
   const icebreakerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [localGroupTitles, setLocalGroupTitles] = useState<Record<string, string>>({});
+  const groupTitleTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   // Review Phase State (History persistence)
   const [historyActionIds, setHistoryActionIds] = useState<string[]>([]);
@@ -275,6 +277,22 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
           }
         }
 
+        // Preserve group titles being edited by current user
+        Object.keys(localGroupTitles).forEach(groupId => {
+          const group = mergedSession.groups.find(g => g.id === groupId);
+          const prevGroup = prevSession.groups.find(g => g.id === groupId);
+          if (group && prevGroup) {
+            group.title = prevGroup.title;
+          }
+        });
+
+        // Preserve discussion focus if facilitator just changed it
+        // Only facilitator can change focus, so preserve their local change
+        if (currentUser.role === 'facilitator' &&
+            prevSession.discussionFocusId !== updatedSession.discussionFocusId) {
+          mergedSession.discussionFocusId = prevSession.discussionFocusId;
+        }
+
         // Preserve current user's happiness vote (Welcome phase)
         if (prevSession.happiness[currentUser.id] !== undefined) {
           mergedSession.happiness = {
@@ -373,6 +391,10 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
         clearTimeout(icebreakerTimerRef.current);
         icebreakerTimerRef.current = null;
       }
+
+      // Clear all pending group title timers
+      Object.values(groupTitleTimersRef.current).forEach(timer => clearTimeout(timer));
+      groupTitleTimersRef.current = {};
     };
   }, [sessionId, currentUser.id, currentUser.name, currentUser.role, team.id]);
 
@@ -457,6 +479,32 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
 
       // Clear local state after sync
       setLocalIcebreakerQuestion(null);
+    }, 500);
+  };
+
+  // Handle group title change with debounce to prevent sync conflicts
+  const handleGroupTitleChange = (groupId: string, title: string) => {
+    // Update local state immediately for responsive UI
+    setLocalGroupTitles(prev => ({ ...prev, [groupId]: title }));
+
+    // Clear existing timer
+    if (groupTitleTimersRef.current[groupId]) {
+      clearTimeout(groupTitleTimersRef.current[groupId]);
+    }
+
+    // Debounce sync to server (500ms after last keystroke)
+    groupTitleTimersRef.current[groupId] = setTimeout(() => {
+      updateSession(s => {
+        const grp = s.groups.find(x => x.id === groupId);
+        if (grp) grp.title = title;
+      });
+
+      // Clear local state after sync
+      setLocalGroupTitles(prev => {
+        const next = { ...prev };
+        delete next[groupId];
+        return next;
+      });
     }, 500);
   };
 
@@ -1727,14 +1775,14 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
                                                         <span className="material-symbols-outlined text-sm mr-1">layers</span> Group
                                                     </div>
                                                     {mode === 'GROUP' ? (
-                                                        <input 
-                                                            value={g.title} 
+                                                        <input
+                                                            value={localGroupTitles[g.id] !== undefined ? localGroupTitles[g.id] : g.title}
                                                             autoFocus={focusGroupId === g.id}
                                                             onBlur={() => setFocusGroupId(null)}
                                                             onKeyDown={(e) => {
                                                                 if(e.key === 'Enter') e.currentTarget.blur();
                                                             }}
-                                                            onChange={(e) => updateSession(s => {const grp = s.groups.find(x => x.id === g.id); if(grp) grp.title = e.target.value;})}
+                                                            onChange={(e) => handleGroupTitleChange(g.id, e.target.value)}
                                                             placeholder="Name this group..."
                                                             className="w-full text-sm font-bold text-slate-700 border-none focus:ring-0 bg-transparent p-0 placeholder-indigo-300"
                                                         />
