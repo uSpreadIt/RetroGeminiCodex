@@ -140,59 +140,29 @@ const TeamLogin: React.FC<Props> = ({ onLogin, onJoin, inviteData, onSuperAdminL
     setError('');
     if (!selectedTeam) return;
 
-    // If a member is selected from the list
-    if (selectionMode === 'SELECT_MEMBER' && selectedMemberId) {
-      const selectedMember = selectedTeam.members.find(m => m.id === selectedMemberId);
-      if (!selectedMember) {
-        setError('Selected member not found');
-        return;
-      }
-      try {
-        const { team, user } = dataService.joinTeamAsParticipant(
-          selectedTeam.id,
-          selectedMember.name,
-          selectedMember.email,
-          selectedMember.inviteToken,
-          !!inviteData
-        );
-        if (onJoin) {
-          onJoin(team, user);
-        } else {
-          onLogin(team);
-        }
-      } catch (err: any) {
-        setError(err.message);
-      }
+    // Always use the name from input field - server will validate identity
+    const userName = name.trim();
+    if (!userName) {
+      setError('Please enter your name');
       return;
     }
 
-    // If entering a new name
-    if (selectionMode === 'NEW_NAME') {
-      if (!name.trim()) {
-        setError('Please enter your name');
-        return;
+    try {
+      const { team, user } = dataService.joinTeamAsParticipant(
+        selectedTeam.id,
+        userName,
+        inviteData?.memberEmail,
+        inviteData?.inviteToken,
+        !!inviteData
+      );
+      if (onJoin) {
+        onJoin(team, user);
+      } else {
+        onLogin(team);
       }
-      try {
-        const finalName = nameLocked ? name : name.trim();
-        const { team, user } = dataService.joinTeamAsParticipant(
-          selectedTeam.id,
-          finalName,
-          inviteData?.memberEmail,
-          inviteData?.inviteToken,
-          !!inviteData
-        );
-        if (onJoin) {
-          onJoin(team, user);
-        } else {
-          onLogin(team);
-        }
-      } catch (err: any) {
-        setError(err.message);
-      }
-      return;
+    } catch (err: any) {
+      setError(err.message);
     }
-
-    setError('Please select a member or enter a new name');
   };
 
   const handleForgotPassword = async (e: React.FormEvent) => {
@@ -488,7 +458,11 @@ const TeamLogin: React.FC<Props> = ({ onLogin, onJoin, inviteData, onSuperAdminL
                                             <button
                                                 key={member.id}
                                                 type="button"
-                                                onClick={() => setSelectedMemberId(member.id)}
+                                                onClick={() => {
+                                                    setSelectedMemberId(member.id);
+                                                    setName(member.name);
+                                                    setNameLocked(true);
+                                                }}
                                                 className={`w-full flex items-center p-3 rounded-lg transition ${
                                                     selectedMemberId === member.id
                                                         ? 'bg-indigo-50 border-2 border-indigo-500'
@@ -509,6 +483,17 @@ const TeamLogin: React.FC<Props> = ({ onLogin, onJoin, inviteData, onSuperAdminL
                                         ))}
                                     </div>
                                 </div>
+                                {selectedMemberId && (
+                                    <div>
+                                        <label className="block text-sm font-bold text-slate-500 mb-1">Selected Name</label>
+                                        <input
+                                            type="text"
+                                            value={name}
+                                            readOnly
+                                            className="w-full border border-slate-300 rounded-lg p-3 bg-slate-50 text-slate-900 outline-none"
+                                        />
+                                    </div>
+                                )}
                                 <div className="relative">
                                     <div className="absolute inset-0 flex items-center">
                                         <div className="w-full border-t border-slate-300"></div>
@@ -523,6 +508,7 @@ const TeamLogin: React.FC<Props> = ({ onLogin, onJoin, inviteData, onSuperAdminL
                                         setSelectionMode('NEW_NAME');
                                         setSelectedMemberId(null);
                                         setName('');
+                                        setNameLocked(false);
                                     }}
                                     className="w-full border-2 border-dashed border-slate-300 text-slate-600 py-3 rounded-lg font-bold hover:border-indigo-400 hover:text-indigo-600 transition"
                                 >
@@ -535,7 +521,7 @@ const TeamLogin: React.FC<Props> = ({ onLogin, onJoin, inviteData, onSuperAdminL
                                 )}
                                 <button
                                     type="submit"
-                                    disabled={!selectedMemberId}
+                                    disabled={!name.trim()}
                                     className="w-full bg-indigo-600 text-white py-3 rounded-lg font-bold hover:bg-indigo-700 shadow-lg disabled:bg-slate-300 disabled:cursor-not-allowed transition"
                                 >
                                     Continue
