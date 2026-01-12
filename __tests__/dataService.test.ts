@@ -407,5 +407,57 @@ describe('dataService', () => {
       const team = dataService.createTeam('Team', 'pwd');
       expect(() => dataService.deleteHealthCheck(team.id, 'non-existent-id')).not.toThrow();
     });
+
+    it('prevents joining as existing member without proper authentication', () => {
+      const team = dataService.createTeam('Team', 'pwd');
+      const member = dataService.joinTeamAsParticipant(team.id, 'Alice', 'alice@test.com', 'token123', true);
+
+      // Try to join as Alice without token or email - should fail
+      expect(() => dataService.joinTeamAsParticipant(team.id, 'Alice', undefined, undefined, false))
+        .toThrow();
+    });
+
+    it('allows joining with existing member name if authenticated', () => {
+      const team = dataService.createTeam('Team', 'pwd');
+      const member = dataService.joinTeamAsParticipant(team.id, 'Alice', 'alice@test.com', 'token123', true);
+
+      // Join again with same token - should succeed
+      const result = dataService.joinTeamAsParticipant(team.id, 'Alice', 'alice@test.com', 'token123', true);
+      expect(result.user.id).toBe(member.user.id);
+    });
+  });
+
+  describe('Session and Health Check Renaming', () => {
+    it('renames a retrospective session', () => {
+      const team = dataService.createTeam('Team', 'pwd');
+      const session = dataService.createSession(team.id, 'Old Name', columns);
+
+      dataService.updateSessionName(team.id, session.id, 'New Name');
+
+      const updated = dataService.getTeam(team.id);
+      const renamedSession = updated?.retrospectives.find(r => r.id === session.id);
+      expect(renamedSession?.name).toBe('New Name');
+    });
+
+    it('renames a health check session', () => {
+      const team = dataService.createTeam('Team', 'pwd');
+      const healthCheck = dataService.createHealthCheckSession(team.id, 'Old HC Name', 'team_health_en');
+
+      dataService.updateHealthCheckName(team.id, healthCheck.id, 'New HC Name');
+
+      const updated = dataService.getTeam(team.id);
+      const renamedHC = updated?.healthChecks?.find(hc => hc.id === healthCheck.id);
+      expect(renamedHC?.name).toBe('New HC Name');
+    });
+
+    it('handles renaming non-existent session gracefully', () => {
+      const team = dataService.createTeam('Team', 'pwd');
+      expect(() => dataService.updateSessionName(team.id, 'fake-id', 'New Name')).not.toThrow();
+    });
+
+    it('handles renaming non-existent health check gracefully', () => {
+      const team = dataService.createTeam('Team', 'pwd');
+      expect(() => dataService.updateHealthCheckName(team.id, 'fake-id', 'New Name')).not.toThrow();
+    });
   });
 });

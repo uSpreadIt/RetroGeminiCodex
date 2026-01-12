@@ -846,13 +846,12 @@ export const dataService = {
     const existingByEmail = normalizedEmail
       ? team.members.find((m) => normalizeEmail(m.email) === normalizedEmail)
       : undefined;
-    // Check for existing user by name (case-insensitive, trimmed) - exclude facilitators
-    const existingByName = team.members.find((m) =>
-      m.role !== 'facilitator' && m.name.trim().toLowerCase() === normalizedName
-    );
 
-    const existingUser = existingByToken || existingByEmail || existingByName;
+    // Security: Only match by verified identity (token or email), not just by name
+    const existingUser = existingByToken || existingByEmail;
+
     if (existingUser) {
+      // User authenticated via token or email
       const matchedByIdentity = (inviteToken && existingUser.inviteToken === inviteToken) ||
         (normalizedEmail && normalizeEmail(existingUser.email) === normalizedEmail);
 
@@ -872,6 +871,14 @@ export const dataService = {
 
       saveData(data);
       return { team, user: existingUser };
+    }
+
+    // Check if trying to use an existing member's name without proper authentication
+    const memberWithSameName = team.members.find((m) =>
+      m.name.trim().toLowerCase() === normalizedName
+    );
+    if (memberWithSameName && !allowCreateWithoutInvite) {
+      throw new Error('This name is already taken by another team member. Please use a different name or use your personalized invite link.');
     }
 
     if (!existingByToken && !existingByEmail && !allowCreateWithoutInvite) {
