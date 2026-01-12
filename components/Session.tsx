@@ -118,6 +118,8 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
   const [newProposalText, setNewProposalText] = useState('');
   const [activeDiscussTicket, setActiveDiscussTicket] = useState<string | null>(null);
   const discussRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const [editingProposalId, setEditingProposalId] = useState<string | null>(null);
+  const [editingProposalText, setEditingProposalText] = useState('');
 
   // UI State
   const [isEditingColumns, setIsEditingColumns] = useState(false);
@@ -808,6 +810,21 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
       }
   };
 
+  const addTimeToTimer = (seconds: number) => {
+      const newTime = localTimerSeconds + seconds;
+      setLocalTimerSeconds(newTime);
+      updateSession((s) => {
+          if (s.settings.timerRunning && s.settings.timerStartedAt) {
+              // If timer is running, adjust the start time to reflect added time
+              s.settings.timerStartedAt = s.settings.timerStartedAt - (seconds * 1000);
+          } else {
+              // If timer is stopped, just update the seconds
+              s.settings.timerSeconds = newTime;
+          }
+          s.settings.timerInitial = newTime;
+      });
+  };
+
   // --- Drag & Drop Helpers ---
   const checkAndDissolveGroup = (s: RetroSession, groupId: string | null, ticketIdToIgnore: string) => {
       if (!groupId) return;
@@ -1011,6 +1028,52 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
       updateSession(s => {
           const a = s.actions.find(x => x.id === actionId);
           if(a) a.type = 'new';
+      });
+  };
+
+  const handleStartEditProposal = (actionId: string, currentText: string) => {
+      setEditingProposalId(actionId);
+      setEditingProposalText(currentText);
+  };
+
+  const handleSaveProposalEdit = (actionId: string) => {
+      if (!editingProposalText.trim()) return;
+      updateSession(s => {
+          const a = s.actions.find(x => x.id === actionId);
+          if (a) a.text = editingProposalText.trim();
+      });
+      setEditingProposalId(null);
+      setEditingProposalText('');
+  };
+
+  const handleCancelProposalEdit = () => {
+      setEditingProposalId(null);
+      setEditingProposalText('');
+  };
+
+  const handleDeleteProposal = (actionId: string) => {
+      updateSession(s => {
+          s.actions = s.actions.filter(a => a.id !== actionId);
+      });
+  };
+
+  const handleToggleNextTopicVote = (topicId: string) => {
+      updateSession(s => {
+          if (!s.discussionNextTopicVotes) {
+              s.discussionNextTopicVotes = {};
+          }
+          if (!s.discussionNextTopicVotes[topicId]) {
+              s.discussionNextTopicVotes[topicId] = [];
+          }
+          const votes = s.discussionNextTopicVotes[topicId];
+          const userIndex = votes.indexOf(currentUser.id);
+          if (userIndex > -1) {
+              // Remove vote
+              votes.splice(userIndex, 1);
+          } else {
+              // Add vote
+              votes.push(currentUser.id);
+          }
       });
   };
 
@@ -1294,6 +1357,30 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
                         }} className="ml-2 text-slate-500 hover:text-indigo-600">
                             <span className="material-symbols-outlined text-lg">{session.settings.timerRunning ? 'pause' : 'play_arrow'}</span>
                         </button>
+                    )}
+                    {isFacilitator && (
+                        <div className="flex items-center ml-2 space-x-1">
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    addTimeToTimer(30);
+                                }}
+                                className="text-xs bg-slate-200 hover:bg-indigo-100 text-slate-700 hover:text-indigo-700 px-2 py-1 rounded font-bold transition"
+                                title="Add 30 seconds"
+                            >
+                                +30s
+                            </button>
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    addTimeToTimer(60);
+                                }}
+                                className="text-xs bg-slate-200 hover:bg-indigo-100 text-slate-700 hover:text-indigo-700 px-2 py-1 rounded font-bold transition"
+                                title="Add 1 minute"
+                            >
+                                +1m
+                            </button>
+                        </div>
                     )}
                     {isFacilitator && (
                         <button onClick={(e) => {
@@ -1617,9 +1704,41 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
                                  <input type="checkbox" checked={session.settings.oneVotePerTicket} onChange={(e) => handleToggleOneVote(e.target.checked)} />
                                  <span>1 vote/item</span>
                              </label>
-                             <div className="flex items-center bg-slate-100 rounded px-2">
-                                 <span>Max:</span>
-                                 <input className="w-8 bg-transparent text-center font-bold outline-none text-slate-900" value={session.settings.maxVotes} onChange={(e) => handleMaxVotesChange(parseInt(e.target.value)||5)} />
+                             <div className="flex items-center bg-slate-100 rounded overflow-hidden">
+                                 <span className="px-2">Max:</span>
+                                 <button
+                                     onClick={() => handleMaxVotesChange(session.settings.maxVotes - 1)}
+                                     className="px-2 py-1 hover:bg-slate-200 transition flex items-center justify-center"
+                                     title="Decrease max votes"
+                                 >
+                                     <span className="material-symbols-outlined text-sm">keyboard_arrow_down</span>
+                                 </button>
+                                 <input
+                                     type="number"
+                                     min="1"
+                                     className="w-12 bg-transparent text-center font-bold outline-none text-slate-900"
+                                     value={session.settings.maxVotes}
+                                     onChange={(e) => {
+                                         const val = parseInt(e.target.value);
+                                         if (!isNaN(val) && val >= 1) {
+                                             handleMaxVotesChange(val);
+                                         }
+                                     }}
+                                     onBlur={(e) => {
+                                         // Ensure valid value on blur
+                                         const val = parseInt(e.target.value);
+                                         if (isNaN(val) || val < 1) {
+                                             handleMaxVotesChange(1);
+                                         }
+                                     }}
+                                 />
+                                 <button
+                                     onClick={() => handleMaxVotesChange(session.settings.maxVotes + 1)}
+                                     className="px-2 py-1 hover:bg-slate-200 transition flex items-center justify-center"
+                                     title="Increase max votes"
+                                 >
+                                     <span className="material-symbols-outlined text-sm">keyboard_arrow_up</span>
+                                 </button>
                              </div>
                         </div>
                    )}
@@ -1937,9 +2056,13 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
              </div>
              <div className="flex-grow overflow-auto p-6 max-w-4xl mx-auto w-full space-y-4">
                  {sortedItems.map((item, index) => {
-                     const subItems = item.type === 'group' 
-                        ? session.tickets.filter(t => t.groupId === item.id) 
+                     const subItems = item.type === 'group'
+                        ? session.tickets.filter(t => t.groupId === item.id)
                         : [];
+                     const nextTopicVotes = session.discussionNextTopicVotes?.[item.id] || [];
+                     const hasVotedNext = nextTopicVotes.includes(currentUser.id);
+                     const totalParticipants = participants.length;
+                     const itemColumn = session.columns.find(c => c.id === item.ref.colId);
 
                      return (
                      <div ref={(el) => { discussRefs.current[item.id] = el; }} key={item.id} className={`bg-white rounded-xl shadow-sm border-2 transition ${activeDiscussTicket === item.id ? 'border-retro-primary ring-4 ring-indigo-50' : 'border-slate-200'}`}>
@@ -1952,14 +2075,19 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
                              });
                            }}
                          >
-                             <div className="bg-slate-800 text-white font-bold w-8 h-8 rounded flex items-center justify-center mr-4 shrink-0">{index + 1}</div>
                              <div className="flex-grow">
                                 <div className="text-lg text-slate-800 font-medium mb-1 break-words">{item.text}</div>
                                  <div className="flex items-center space-x-4 text-xs font-bold text-slate-400">
                                      <span className="flex items-center text-indigo-600"><span className="material-symbols-outlined text-sm mr-1">thumb_up</span> {item.votes} votes</span>
                                      {item.type === 'group' && <span className="flex items-center"><span className="material-symbols-outlined text-sm mr-1">layers</span> Group</span>}
+                                     {itemColumn && (
+                                         <span className="flex items-center">
+                                             <span className="material-symbols-outlined text-sm mr-1">{itemColumn.icon}</span>
+                                             <span>{itemColumn.title}</span>
+                                         </span>
+                                     )}
                                  </div>
-                                 
+
                                  {item.type === 'group' && subItems.length > 0 && (
                                      <div className="mt-3 pl-3 border-l-2 border-slate-200">
                                          {subItems.map(sub => (
@@ -1968,7 +2096,23 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
                                      </div>
                                  )}
                              </div>
-                             <span className="material-symbols-outlined text-slate-300">{activeDiscussTicket === item.id ? 'expand_less' : 'expand_more'}</span>
+                             <button
+                                 onClick={(e) => {
+                                     e.stopPropagation();
+                                     handleToggleNextTopicVote(item.id);
+                                 }}
+                                 className={`ml-4 flex items-center space-x-2 px-3 py-2 rounded-lg text-xs font-bold transition shrink-0 ${hasVotedNext ? 'bg-indigo-100 text-indigo-700 ring-2 ring-indigo-300' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                                 title={`${nextTopicVotes.length}/${totalParticipants} want to move on`}
+                             >
+                                 <span className="material-symbols-outlined text-sm">skip_next</span>
+                                 <span>Next Topic</span>
+                                 {nextTopicVotes.length > 0 && (
+                                     <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${hasVotedNext ? 'bg-indigo-200 text-indigo-800' : 'bg-slate-200 text-slate-700'}`}>
+                                         {nextTopicVotes.length}/{totalParticipants}
+                                     </span>
+                                 )}
+                             </button>
+                             <span className="material-symbols-outlined text-slate-300 shrink-0 ml-2">{activeDiscussTicket === item.id ? 'expand_less' : 'expand_more'}</span>
                          </div>
                          
                          {activeDiscussTicket === item.id && (
@@ -1981,32 +2125,79 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
                                         const downVotes = Object.values(p.proposalVotes || {}).filter(v=>v==='down').length;
                                         const totalVotes = upVotes + neutralVotes + downVotes;
                                         const myVote = p.proposalVotes?.[currentUser.id];
+                                        const isEditing = editingProposalId === p.id;
 
                                          return (
-                                         <div key={p.id} className="bg-white p-3 rounded border border-slate-200 mb-2 flex items-center justify-between">
-                                             <span className="text-slate-700 text-sm font-medium mr-2">{p.text}</span>
-                                             <div className="flex items-center space-x-3">
-                                                <div className="flex bg-slate-100 rounded-lg p-1 space-x-1">
-                                                    <button onClick={() => handleVoteProposal(p.id, 'up')} className={`px-2 py-1 rounded flex items-center transition ${myVote==='up'?'bg-emerald-100 text-emerald-700 shadow-sm':'hover:bg-white text-slate-500'}`}>
-                                                        <span className="material-symbols-outlined text-sm mr-1">thumb_up</span>
-                                                        <span className="text-xs font-bold">{upVotes > 0 ? upVotes : ''}</span>
+                                         <div key={p.id} className="bg-white p-3 rounded border border-slate-200 mb-2">
+                                             {isEditing ? (
+                                                <div className="flex items-center space-x-2">
+                                                    <input
+                                                        type="text"
+                                                        value={editingProposalText}
+                                                        onChange={(e) => setEditingProposalText(e.target.value)}
+                                                        onKeyDown={(e) => {
+                                                            if (e.key === 'Enter') handleSaveProposalEdit(p.id);
+                                                            if (e.key === 'Escape') handleCancelProposalEdit();
+                                                        }}
+                                                        className="flex-grow border border-slate-300 rounded p-2 text-sm outline-none focus:border-retro-primary bg-white text-slate-900"
+                                                        autoFocus
+                                                    />
+                                                    <button
+                                                        onClick={() => handleSaveProposalEdit(p.id)}
+                                                        className="bg-emerald-500 text-white px-3 py-2 rounded text-xs font-bold hover:bg-emerald-600"
+                                                    >
+                                                        <span className="material-symbols-outlined text-sm">check</span>
                                                     </button>
-                                                    <button onClick={() => handleVoteProposal(p.id, 'neutral')} className={`px-2 py-1 rounded flex items-center transition ${myVote==='neutral'?'bg-slate-300 text-slate-800 shadow-sm':'hover:bg-white text-slate-500'}`}>
-                                                        <span className="material-symbols-outlined text-sm mr-1">remove</span>
-                                                        <span className="text-xs font-bold">{neutralVotes > 0 ? neutralVotes : ''}</span>
-                                                    </button>
-                                                    <button onClick={() => handleVoteProposal(p.id, 'down')} className={`px-2 py-1 rounded flex items-center transition ${myVote==='down'?'bg-red-100 text-red-700 shadow-sm':'hover:bg-white text-slate-500'}`}>
-                                                        <span className="material-symbols-outlined text-sm mr-1">thumb_down</span>
-                                                        <span className="text-xs font-bold">{downVotes > 0 ? downVotes : ''}</span>
+                                                    <button
+                                                        onClick={handleCancelProposalEdit}
+                                                        className="bg-slate-300 text-slate-700 px-3 py-2 rounded text-xs font-bold hover:bg-slate-400"
+                                                    >
+                                                        <span className="material-symbols-outlined text-sm">close</span>
                                                     </button>
                                                 </div>
-                                                <div className="text-[11px] font-bold text-slate-500 px-2 py-1 bg-slate-100 rounded">
-                                                    Total: {totalVotes}
+                                             ) : (
+                                                <div className="flex items-center justify-between">
+                                                    <div className="flex items-center space-x-2 flex-grow mr-3">
+                                                        <span className="text-slate-700 text-sm font-medium">{p.text}</span>
+                                                        <button
+                                                            onClick={() => handleStartEditProposal(p.id, p.text)}
+                                                            className="text-slate-400 hover:text-indigo-600 transition"
+                                                            title="Edit proposal"
+                                                        >
+                                                            <span className="material-symbols-outlined text-sm">edit</span>
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleDeleteProposal(p.id)}
+                                                            className="text-slate-400 hover:text-red-600 transition"
+                                                            title="Delete proposal"
+                                                        >
+                                                            <span className="material-symbols-outlined text-sm">delete</span>
+                                                        </button>
+                                                    </div>
+                                                    <div className="flex items-center space-x-3">
+                                                       <div className="flex bg-slate-100 rounded-lg p-1 space-x-1">
+                                                           <button onClick={() => handleVoteProposal(p.id, 'up')} className={`px-2 py-1 rounded flex items-center transition ${myVote==='up'?'bg-emerald-100 text-emerald-700 shadow-sm':'hover:bg-white text-slate-500'}`}>
+                                                               <span className="material-symbols-outlined text-sm mr-1">thumb_up</span>
+                                                               <span className="text-xs font-bold">{upVotes > 0 ? upVotes : ''}</span>
+                                                           </button>
+                                                           <button onClick={() => handleVoteProposal(p.id, 'neutral')} className={`px-2 py-1 rounded flex items-center transition ${myVote==='neutral'?'bg-slate-300 text-slate-800 shadow-sm':'hover:bg-white text-slate-500'}`}>
+                                                               <span className="material-symbols-outlined text-sm mr-1">remove</span>
+                                                               <span className="text-xs font-bold">{neutralVotes > 0 ? neutralVotes : ''}</span>
+                                                           </button>
+                                                           <button onClick={() => handleVoteProposal(p.id, 'down')} className={`px-2 py-1 rounded flex items-center transition ${myVote==='down'?'bg-red-100 text-red-700 shadow-sm':'hover:bg-white text-slate-500'}`}>
+                                                               <span className="material-symbols-outlined text-sm mr-1">thumb_down</span>
+                                                               <span className="text-xs font-bold">{downVotes > 0 ? downVotes : ''}</span>
+                                                           </button>
+                                                       </div>
+                                                       <div className="text-[11px] font-bold text-slate-500 px-2 py-1 bg-slate-100 rounded">
+                                                           Total: {totalVotes}
+                                                       </div>
+                                                       {isFacilitator && (
+                                                           <button onClick={() => handleAcceptProposal(p.id)} className="bg-retro-primary text-white px-3 py-1.5 rounded text-xs font-bold hover:bg-retro-primaryHover shadow-sm">Accept</button>
+                                                       )}
+                                                   </div>
                                                 </div>
-                                                {isFacilitator && (
-                                                    <button onClick={() => handleAcceptProposal(p.id)} className="bg-retro-primary text-white px-3 py-1.5 rounded text-xs font-bold hover:bg-retro-primaryHover shadow-sm">Accept</button>
-                                                )}
-                                            </div>
+                                             )}
                                         </div>
                                      )})}
                                      {session.actions.filter(a => a.linkedTicketId === item.id && a.type === 'new').map(a => (

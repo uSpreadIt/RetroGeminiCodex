@@ -76,6 +76,7 @@ export interface RetroSession {
   phase: string;
   participants?: User[];
   discussionFocusId?: string | null;
+  discussionNextTopicVotes?: Record<string, string[]>; // topic ID -> array of user IDs who want to move on
   icebreakerQuestion: string;
   columns: Column[];
   settings: RetroSettings;
