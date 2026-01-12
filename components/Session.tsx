@@ -128,6 +128,14 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
   const [timerEditSec, setTimerEditSec] = useState(0);
   // Local timer display to avoid sync race conditions
   const [localTimerSeconds, setLocalTimerSeconds] = useState(session?.settings.timerSeconds ?? 0);
+  const [maxVotesInput, setMaxVotesInput] = useState(session?.settings.maxVotes.toString() ?? '5');
+
+  // Sync maxVotesInput with session changes
+  useEffect(() => {
+    if (session?.settings.maxVotes) {
+      setMaxVotesInput(session.settings.maxVotes.toString());
+    }
+  }, [session?.settings.maxVotes]);
 
   // Audio ref
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -815,8 +823,8 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
       setLocalTimerSeconds(newTime);
       updateSession((s) => {
           if (s.settings.timerRunning && s.settings.timerStartedAt) {
-              // If timer is running, adjust the start time to reflect added time
-              s.settings.timerStartedAt = s.settings.timerStartedAt - (seconds * 1000);
+              // If timer is running, push the start time forward to add time
+              s.settings.timerStartedAt = s.settings.timerStartedAt + (seconds * 1000);
           } else {
               // If timer is stopped, just update the seconds
               s.settings.timerSeconds = newTime;
@@ -1063,16 +1071,15 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
               s.discussionNextTopicVotes = {};
           }
           if (!s.discussionNextTopicVotes[topicId]) {
-              s.discussionNextTopicVotes[topicId] = [];
+              s.discussionNextTopicVotes[topicId] = {};
           }
           const votes = s.discussionNextTopicVotes[topicId];
-          const userIndex = votes.indexOf(currentUser.id);
-          if (userIndex > -1) {
+          if (votes[currentUser.id]) {
               // Remove vote
-              votes.splice(userIndex, 1);
+              delete votes[currentUser.id];
           } else {
               // Add vote
-              votes.push(currentUser.id);
+              votes[currentUser.id] = true;
           }
       });
   };
@@ -1331,7 +1338,29 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
         </div>
         <div
             className="flex items-center bg-slate-100 rounded-lg px-3 py-1 mr-4 cursor-pointer hover:bg-slate-200 transition"
-            onClick={acknowledgeTimer}
+            onClick={(e) => {
+                if (!isFacilitator) {
+                    acknowledgeTimer();
+                    return;
+                }
+                // If timer is running, stop it
+                if (session.settings.timerRunning) {
+                    updateSession(s => {
+                        s.settings.timerRunning = false;
+                        s.settings.timerSeconds = localTimerSeconds;
+                        s.settings.timerStartedAt = undefined;
+                    });
+                } else if (!isEditingTimer) {
+                    // If not editing, enter edit mode
+                    acknowledgeTimer();
+                    setTimerEditMin(Math.floor(localTimerSeconds / 60));
+                    setTimerEditSec(localTimerSeconds % 60);
+                    setIsEditingTimer(true);
+                } else {
+                    // If already editing, acknowledge
+                    acknowledgeTimer();
+                }
+            }}
         >
              {!isEditingTimer ? (
                  <>
@@ -1381,15 +1410,6 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
                                 +1m
                             </button>
                         </div>
-                    )}
-                    {isFacilitator && (
-                        <button onClick={(e) => {
-                            e.stopPropagation();
-                            acknowledgeTimer();
-                            setTimerEditMin(Math.floor(localTimerSeconds / 60));
-                            setTimerEditSec(localTimerSeconds % 60);
-                            setIsEditingTimer(true);
-                        }} className="ml-1 text-slate-400 hover:text-indigo-600"><span className="material-symbols-outlined text-sm">edit</span></button>
                     )}
                  </>
              ) : (
@@ -1714,21 +1734,32 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
                                      <span className="material-symbols-outlined text-sm">keyboard_arrow_down</span>
                                  </button>
                                  <input
-                                     type="number"
-                                     min="1"
+                                     type="text"
+                                     inputMode="numeric"
                                      className="w-12 bg-transparent text-center font-bold outline-none text-slate-900"
-                                     value={session.settings.maxVotes}
+                                     value={maxVotesInput}
                                      onChange={(e) => {
-                                         const val = parseInt(e.target.value);
-                                         if (!isNaN(val) && val >= 1) {
-                                             handleMaxVotesChange(val);
+                                         const val = e.target.value;
+                                         // Allow empty or numeric values
+                                         if (val === '' || /^\d+$/.test(val)) {
+                                             setMaxVotesInput(val);
+                                             // Only update session if valid number >= 1
+                                             const num = parseInt(val);
+                                             if (!isNaN(num) && num >= 1) {
+                                                 handleMaxVotesChange(num);
+                                             }
                                          }
                                      }}
-                                     onBlur={(e) => {
-                                         // Ensure valid value on blur
-                                         const val = parseInt(e.target.value);
+                                     onBlur={() => {
+                                         // On blur, ensure we have a valid value
+                                         const val = parseInt(maxVotesInput);
                                          if (isNaN(val) || val < 1) {
-                                             handleMaxVotesChange(1);
+                                             // Revert to current session value or default to 1
+                                             const currentVal = session.settings.maxVotes || 1;
+                                             setMaxVotesInput(currentVal.toString());
+                                             if (currentVal !== session.settings.maxVotes) {
+                                                 handleMaxVotesChange(currentVal);
+                                             }
                                          }
                                      }}
                                  />
@@ -2059,8 +2090,9 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
                      const subItems = item.type === 'group'
                         ? session.tickets.filter(t => t.groupId === item.id)
                         : [];
-                     const nextTopicVotes = session.discussionNextTopicVotes?.[item.id] || [];
-                     const hasVotedNext = nextTopicVotes.includes(currentUser.id);
+                     const nextTopicVotesRecord = session.discussionNextTopicVotes?.[item.id] || {};
+                     const nextTopicVotesCount = Object.keys(nextTopicVotesRecord).length;
+                     const hasVotedNext = !!nextTopicVotesRecord[currentUser.id];
                      const totalParticipants = participants.length;
                      const itemColumn = session.columns.find(c => c.id === item.ref.colId);
 
@@ -2102,13 +2134,13 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
                                      handleToggleNextTopicVote(item.id);
                                  }}
                                  className={`ml-4 flex items-center space-x-2 px-3 py-2 rounded-lg text-xs font-bold transition shrink-0 ${hasVotedNext ? 'bg-indigo-100 text-indigo-700 ring-2 ring-indigo-300' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-                                 title={`${nextTopicVotes.length}/${totalParticipants} want to move on`}
+                                 title={`${nextTopicVotesCount}/${totalParticipants} want to move on`}
                              >
                                  <span className="material-symbols-outlined text-sm">skip_next</span>
                                  <span>Next Topic</span>
-                                 {nextTopicVotes.length > 0 && (
+                                 {nextTopicVotesCount > 0 && (
                                      <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${hasVotedNext ? 'bg-indigo-200 text-indigo-800' : 'bg-slate-200 text-slate-700'}`}>
-                                         {nextTopicVotes.length}/{totalParticipants}
+                                         {nextTopicVotesCount}/{totalParticipants}
                                      </span>
                                  )}
                              </button>
@@ -2158,21 +2190,22 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
                                              ) : (
                                                 <div className="flex items-center justify-between">
                                                     <div className="flex items-center space-x-2 flex-grow mr-3">
-                                                        <span className="text-slate-700 text-sm font-medium">{p.text}</span>
-                                                        <button
-                                                            onClick={() => handleStartEditProposal(p.id, p.text)}
-                                                            className="text-slate-400 hover:text-indigo-600 transition"
-                                                            title="Edit proposal"
+                                                        <span
+                                                            className={`text-slate-700 text-sm font-medium ${isFacilitator ? 'cursor-pointer hover:text-indigo-600' : ''}`}
+                                                            onClick={() => isFacilitator && handleStartEditProposal(p.id, p.text)}
+                                                            title={isFacilitator ? "Click to edit" : ""}
                                                         >
-                                                            <span className="material-symbols-outlined text-sm">edit</span>
-                                                        </button>
-                                                        <button
-                                                            onClick={() => handleDeleteProposal(p.id)}
-                                                            className="text-slate-400 hover:text-red-600 transition"
-                                                            title="Delete proposal"
-                                                        >
-                                                            <span className="material-symbols-outlined text-sm">delete</span>
-                                                        </button>
+                                                            {p.text}
+                                                        </span>
+                                                        {isFacilitator && (
+                                                            <button
+                                                                onClick={() => handleDeleteProposal(p.id)}
+                                                                className="text-slate-400 hover:text-red-600 transition"
+                                                                title="Delete proposal"
+                                                            >
+                                                                <span className="material-symbols-outlined text-sm">delete</span>
+                                                            </button>
+                                                        )}
                                                     </div>
                                                     <div className="flex items-center space-x-3">
                                                        <div className="flex bg-slate-100 rounded-lg p-1 space-x-1">
