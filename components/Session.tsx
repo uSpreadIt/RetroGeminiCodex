@@ -124,8 +124,8 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
   // UI State
   const [isEditingColumns, setIsEditingColumns] = useState(false);
   const [isEditingTimer, setIsEditingTimer] = useState(false);
-  const [timerEditMin, setTimerEditMin] = useState(5);
-  const [timerEditSec, setTimerEditSec] = useState(0);
+  const [timerEditMin, setTimerEditMin] = useState('5');
+  const [timerEditSec, setTimerEditSec] = useState('0');
   // Local timer display to avoid sync race conditions
   const [localTimerSeconds, setLocalTimerSeconds] = useState(session?.settings.timerSeconds ?? 0);
   const [maxVotesInput, setMaxVotesInput] = useState(session?.settings.maxVotes.toString() ?? '5');
@@ -838,7 +838,9 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
   };
 
   const saveTimerEdit = () => {
-      const newSeconds = (timerEditMin * 60) + timerEditSec;
+      const mins = parseInt(timerEditMin) || 0;
+      const secs = parseInt(timerEditSec) || 0;
+      const newSeconds = (mins * 60) + secs;
       setLocalTimerSeconds(newSeconds);
       updateSession(s => {
           s.settings.timerSeconds = newSeconds;
@@ -1038,7 +1040,8 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
   const handleVoteProposal = (actionId: string, vote: 'up'|'down'|'neutral') => {
       updateSession(s => {
           const a = s.actions.find(x => x.id === actionId);
-          if(a) {
+          // Only allow voting on proposals, not accepted actions
+          if(a && a.type === 'proposal') {
               if(!a.proposalVotes) a.proposalVotes = {};
               if (a.proposalVotes[currentUser.id] === vote) {
                   delete a.proposalVotes[currentUser.id];
@@ -1052,7 +1055,10 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
   const handleAcceptProposal = (actionId: string) => {
       updateSession(s => {
           const a = s.actions.find(x => x.id === actionId);
-          if(a) a.type = 'new';
+          // Only accept if still a proposal (prevents race condition)
+          if(a && a.type === 'proposal') {
+              a.type = 'new';
+          }
       });
   };
 
@@ -1378,8 +1384,8 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
                     });
                 } else if (!isEditingTimer) {
                     // If not editing, enter edit mode
-                    setTimerEditMin(Math.floor(localTimerSeconds / 60));
-                    setTimerEditSec(localTimerSeconds % 60);
+                    setTimerEditMin(Math.floor(localTimerSeconds / 60).toString());
+                    setTimerEditSec((localTimerSeconds % 60).toString());
                     setIsEditingTimer(true);
                 }
             }}
@@ -1442,10 +1448,16 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
                      }
                  }}>
                      <input
-                        type="number"
-                        min="0"
+                        type="text"
+                        inputMode="numeric"
                         value={timerEditMin}
-                        onChange={(e) => setTimerEditMin(Math.max(0, parseInt(e.target.value) || 0))}
+                        onChange={(e) => {
+                            const val = e.target.value;
+                            // Allow empty or numeric values
+                            if (val === '' || /^\d+$/.test(val)) {
+                                setTimerEditMin(val);
+                            }
+                        }}
                         onKeyDown={(e) => e.key === 'Enter' && saveTimerEdit()}
                         className="w-16 h-10 text-xl border border-slate-300 rounded px-1 bg-white text-slate-900 text-center font-bold"
                         placeholder="MM"
@@ -1453,10 +1465,16 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
                      />
                      <span className="font-bold text-xl">:</span>
                      <input
-                        type="number"
-                        min="0"
+                        type="text"
+                        inputMode="numeric"
                         value={timerEditSec}
-                        onChange={(e) => setTimerEditSec(Math.max(0, parseInt(e.target.value) || 0))}
+                        onChange={(e) => {
+                            const val = e.target.value;
+                            // Allow empty or numeric values
+                            if (val === '' || /^\d+$/.test(val)) {
+                                setTimerEditSec(val);
+                            }
+                        }}
                         onKeyDown={(e) => e.key === 'Enter' && saveTimerEdit()}
                         className="w-16 h-10 text-xl border border-slate-300 rounded px-1 bg-white text-slate-900 text-center font-bold"
                         placeholder="SS"
@@ -1845,7 +1863,15 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
                     </div>
                 </div>
             )}
-            <div className="flex-grow overflow-x-auto bg-slate-50 p-6 flex space-x-6 items-start h-auto min-h-0 justify-start">
+            <div
+                className="flex-grow overflow-x-auto bg-slate-50 p-6 flex space-x-6 items-start h-auto min-h-0 justify-start"
+                onWheel={(e) => {
+                    // Allow mouse wheel scrolling during drag
+                    if (mode === 'GROUP' && draggedTicket) {
+                        e.currentTarget.scrollLeft += e.deltaY;
+                    }
+                }}
+            >
                 {session.columns.map(col => {
                     const tickets = session.tickets.filter(t => t.colId === col.id && !t.groupId);
                     const groups = session.groups.filter(g => g.colId === col.id);
