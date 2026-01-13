@@ -64,38 +64,18 @@ const TeamLogin: React.FC<Props> = ({ onLogin, onJoin, inviteData, onSuperAdminL
     const team = dataService.importTeam(inviteData);
     setSelectedTeam(team);
 
-    const normalizedInviteEmail = normalizeEmail(inviteData.memberEmail);
-    const matchedMember =
-      (inviteData.memberId && team.members.find((member) => member.id === inviteData.memberId)) ||
-      (inviteData.inviteToken && team.members.find((member) => member.inviteToken === inviteData.inviteToken)) ||
-      (normalizedInviteEmail && team.members.find((member) => normalizeEmail(member.email) === normalizedInviteEmail)) ||
-      null;
-
-    // Try to auto-join only when we can verify identity from invite data
-    // The server will validate if email/token authentication is valid
-    if (matchedMember) {
-      try {
-        const { team: updatedTeam, user } = dataService.joinTeamAsParticipant(
-          team.id,
-          matchedMember.name,
-          inviteData.memberEmail,
-          inviteData.inviteToken,
-          true
-        );
-        // Auto-join succeeded (server validated the authentication)
-        if (onJoin) {
-          onJoin(updatedTeam, user);
-        } else {
-          onLogin(updatedTeam);
-        }
-      } catch (err: any) {
-        // Auto-join failed (invalid or missing authentication)
-        // Show member selection screen as fallback
-        setError(err.message);
-        setView('JOIN');
+    try {
+      const { team: updatedTeam, user } = dataService.autoJoinFromInvite(team.id, inviteData);
+      // Auto-join succeeded (server validated the authentication)
+      if (onJoin) {
+        onJoin(updatedTeam, user);
+      } else {
+        onLogin(updatedTeam);
       }
-    } else {
-      // No member name provided - show member selection screen
+    } catch (err: any) {
+      // Auto-join failed (invalid or missing authentication)
+      // Show member selection screen as fallback
+      setError(err.message);
       setView('JOIN');
     }
   }, [inviteData, onJoin, onLogin]);
