@@ -64,13 +64,20 @@ const TeamLogin: React.FC<Props> = ({ onLogin, onJoin, inviteData, onSuperAdminL
     const team = dataService.importTeam(inviteData);
     setSelectedTeam(team);
 
-    // Try to auto-join if we have member name
+    const normalizedInviteEmail = normalizeEmail(inviteData.memberEmail);
+    const matchedMember =
+      (inviteData.memberId && team.members.find((member) => member.id === inviteData.memberId)) ||
+      (inviteData.inviteToken && team.members.find((member) => member.inviteToken === inviteData.inviteToken)) ||
+      (normalizedInviteEmail && team.members.find((member) => normalizeEmail(member.email) === normalizedInviteEmail)) ||
+      null;
+
+    // Try to auto-join only when we can verify identity from invite data
     // The server will validate if email/token authentication is valid
-    if (inviteData.memberName) {
+    if (matchedMember) {
       try {
         const { team: updatedTeam, user } = dataService.joinTeamAsParticipant(
           team.id,
-          inviteData.memberName,
+          matchedMember.name,
           inviteData.memberEmail,
           inviteData.inviteToken,
           true
