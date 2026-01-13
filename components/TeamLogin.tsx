@@ -36,6 +36,8 @@ const TeamLogin: React.FC<Props> = ({ onLogin, onJoin, inviteData, onSuperAdminL
   const [facilitatorEmail, setFacilitatorEmail] = useState('');
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
+  const [selectionMode, setSelectionMode] = useState<'SELECT_MEMBER' | 'NEW_NAME'>('SELECT_MEMBER');
+  const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
 
   const normalizeEmail = (email?: string | null) => email?.trim().toLowerCase();
 
@@ -55,14 +57,28 @@ const TeamLogin: React.FC<Props> = ({ onLogin, onJoin, inviteData, onSuperAdminL
     }
   }, []);
 
-  // Handle invitation link - auto-switch to JOIN view
+  // Handle invitation link - try auto-join or show member selection
   useEffect(() => {
-    if (inviteData) {
-      const team = dataService.importTeam(inviteData);
-      setSelectedTeam(team);
+    if (!inviteData) return;
+
+    const team = dataService.importTeam(inviteData);
+    setSelectedTeam(team);
+
+    try {
+      const { team: updatedTeam, user } = dataService.autoJoinFromInvite(team.id, inviteData);
+      // Auto-join succeeded (server validated the authentication)
+      if (onJoin) {
+        onJoin(updatedTeam, user);
+      } else {
+        onLogin(updatedTeam);
+      }
+    } catch (err: any) {
+      // Auto-join failed (invalid or missing authentication)
+      // Show member selection screen as fallback
+      setError(err.message);
       setView('JOIN');
     }
-  }, [inviteData]);
+  }, [inviteData, onJoin, onLogin]);
 
   useEffect(() => {
       setTeams(dataService.getAllTeams());
@@ -133,15 +149,18 @@ const TeamLogin: React.FC<Props> = ({ onLogin, onJoin, inviteData, onSuperAdminL
     e.preventDefault();
     setError('');
     if (!selectedTeam) return;
-    if (!name.trim()) {
+
+    // Always use the name from input field - server will validate identity
+    const userName = name.trim();
+    if (!userName) {
       setError('Please enter your name');
       return;
     }
+
     try {
-      const finalName = nameLocked ? name : name.trim();
       const { team, user } = dataService.joinTeamAsParticipant(
         selectedTeam.id,
-        finalName,
+        userName,
         inviteData?.memberEmail,
         inviteData?.inviteToken,
         !!inviteData
@@ -425,42 +444,142 @@ const TeamLogin: React.FC<Props> = ({ onLogin, onJoin, inviteData, onSuperAdminL
             )}
 
             {view === 'JOIN' && selectedTeam && (
-                <div className="flex flex-col h-full justify-center max-w-sm mx-auto">
+                <div className="flex flex-col h-full justify-center max-w-md mx-auto">
                     <div className="text-center mb-6">
                         <div className="w-16 h-16 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center font-bold text-2xl mx-auto mb-4">
                             {selectedTeam.name.substring(0,2).toUpperCase()}
                         </div>
                         <h2 className="text-2xl font-bold text-slate-800">Join {selectedTeam.name}</h2>
-                        <p className="text-slate-500 text-sm mt-2">You've been invited to join this team. Enter your name to continue.</p>
+                        <p className="text-slate-500 text-sm mt-2">
+                            {selectionMode === 'SELECT_MEMBER'
+                                ? 'Select your name from the list or add a new one'
+                                : 'Enter your name to join'}
+                        </p>
                     </div>
                     {error && <div className="bg-red-50 text-red-600 p-3 rounded mb-4 text-sm">{error}</div>}
+
                     <form onSubmit={handleJoin} className="space-y-4">
-                        <div>
-                            <label className="block text-sm font-bold text-slate-500 mb-1">Your Name</label>
-                            <input
-                                type="text"
-                                required
-                                value={name}
-                                onChange={(e) => setName(e.target.value)}
-                                readOnly={nameLocked}
-                                className="w-full border border-slate-300 rounded-lg p-3 bg-white text-slate-900 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-                                placeholder="e.g. John Doe"
-                                autoFocus
-                            />
-                        </div>
-                        {nameLocked && (
-                          <div className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded p-2">
-                            We recognized you from a previous session. Your name was kept for consistency.
-                          </div>
+                        {selectionMode === 'SELECT_MEMBER' && selectedTeam.members.filter(m => m.role !== 'facilitator').length > 0 ? (
+                            <>
+                                <div>
+                                    <label className="block text-sm font-bold text-slate-500 mb-2">Select Your Name</label>
+                                    <div className="max-h-64 overflow-y-auto space-y-2 border border-slate-200 rounded-lg p-2 bg-white">
+                                        {selectedTeam.members.filter(m => m.role !== 'facilitator').map((member) => (
+                                            <button
+                                                key={member.id}
+                                                type="button"
+                                                onClick={() => {
+                                                    setSelectedMemberId(member.id);
+                                                    setName(member.name);
+                                                    setNameLocked(true);
+                                                }}
+                                                className={`w-full flex items-center p-3 rounded-lg transition ${
+                                                    selectedMemberId === member.id
+                                                        ? 'bg-indigo-50 border-2 border-indigo-500'
+                                                        : 'bg-slate-50 border-2 border-transparent hover:bg-slate-100'
+                                                }`}
+                                            >
+                                                <div className={`w-10 h-10 rounded-full ${member.color} text-white flex items-center justify-center font-bold text-sm mr-3 shrink-0`}>
+                                                    {member.name.substring(0, 2).toUpperCase()}
+                                                </div>
+                                                <div className="text-left flex-grow">
+                                                    <div className="font-bold text-slate-800">{member.name}</div>
+                                                    <div className="text-xs text-slate-500 capitalize">{member.role}</div>
+                                                </div>
+                                                {selectedMemberId === member.id && (
+                                                    <span className="material-symbols-outlined text-indigo-600 ml-2">check_circle</span>
+                                                )}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                                {selectedMemberId && (
+                                    <div>
+                                        <label className="block text-sm font-bold text-slate-500 mb-1">Selected Name</label>
+                                        <input
+                                            type="text"
+                                            value={name}
+                                            readOnly
+                                            className="w-full border border-slate-300 rounded-lg p-3 bg-slate-50 text-slate-900 outline-none"
+                                        />
+                                    </div>
+                                )}
+                                <div className="relative">
+                                    <div className="absolute inset-0 flex items-center">
+                                        <div className="w-full border-t border-slate-300"></div>
+                                    </div>
+                                    <div className="relative flex justify-center text-xs">
+                                        <span className="bg-slate-50 px-2 text-slate-500">OR</span>
+                                    </div>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setSelectionMode('NEW_NAME');
+                                        setSelectedMemberId(null);
+                                        setName('');
+                                        setNameLocked(false);
+                                    }}
+                                    className="w-full border-2 border-dashed border-slate-300 text-slate-600 py-3 rounded-lg font-bold hover:border-indigo-400 hover:text-indigo-600 transition"
+                                >
+                                    + I'm not in the list
+                                </button>
+                                {inviteData?.memberEmail && (
+                                    <div className="text-xs text-slate-500 bg-slate-100 border border-slate-200 rounded p-2">
+                                        Joining as <strong>{inviteData.memberEmail}</strong>
+                                    </div>
+                                )}
+                                <button
+                                    type="submit"
+                                    disabled={!name.trim()}
+                                    className="w-full bg-indigo-600 text-white py-3 rounded-lg font-bold hover:bg-indigo-700 shadow-lg disabled:bg-slate-300 disabled:cursor-not-allowed transition"
+                                >
+                                    Continue
+                                </button>
+                            </>
+                        ) : (
+                            <>
+                                {selectedTeam.members.filter(m => m.role !== 'facilitator').length > 0 && (
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setSelectionMode('SELECT_MEMBER');
+                                            setName('');
+                                        }}
+                                        className="text-indigo-600 hover:text-indigo-800 text-sm font-medium flex items-center"
+                                    >
+                                        <span className="material-symbols-outlined text-sm mr-1">arrow_back</span>
+                                        Back to member list
+                                    </button>
+                                )}
+                                <div>
+                                    <label className="block text-sm font-bold text-slate-500 mb-1">Your Name</label>
+                                    <input
+                                        type="text"
+                                        required
+                                        value={name}
+                                        onChange={(e) => setName(e.target.value)}
+                                        readOnly={nameLocked}
+                                        className="w-full border border-slate-300 rounded-lg p-3 bg-white text-slate-900 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                                        placeholder="e.g. John Doe"
+                                        autoFocus
+                                    />
+                                </div>
+                                {nameLocked && (
+                                    <div className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded p-2">
+                                        We recognized you from a previous session. Your name was kept for consistency.
+                                    </div>
+                                )}
+                                {inviteData?.memberEmail && (
+                                    <div className="text-xs text-slate-500 bg-slate-100 border border-slate-200 rounded p-2">
+                                        Joining as <strong>{inviteData.memberEmail}</strong>
+                                    </div>
+                                )}
+                                <button type="submit" className="w-full bg-indigo-600 text-white py-3 rounded-lg font-bold hover:bg-indigo-700 shadow-lg">
+                                    Join Retrospective
+                                </button>
+                            </>
                         )}
-                        {inviteData?.memberEmail && (
-                          <div className="text-xs text-slate-500 bg-slate-100 border border-slate-200 rounded p-2">
-                            Joining as <strong>{inviteData.memberEmail}</strong>
-                          </div>
-                        )}
-                        <button type="submit" className="w-full bg-indigo-600 text-white py-3 rounded-lg font-bold hover:bg-indigo-700 shadow-lg">
-                            Join Retrospective
-                        </button>
                     </form>
                     <p className="text-xs text-slate-400 text-center mt-4">
                         You will join as a participant

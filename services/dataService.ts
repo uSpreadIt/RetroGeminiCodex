@@ -465,6 +465,29 @@ export const dataService = {
     }
   },
 
+  updateSessionName: (teamId: string, sessionId: string, newName: string) => {
+    const data = loadData();
+    const team = data.teams.find(t => t.id === teamId);
+    if (!team) return;
+    const session = team.retrospectives.find(r => r.id === sessionId);
+    if (session) {
+      session.name = newName;
+      saveData(data);
+    }
+  },
+
+  updateHealthCheckName: (teamId: string, healthCheckId: string, newName: string) => {
+    const data = loadData();
+    const team = data.teams.find(t => t.id === teamId);
+    if (!team) return;
+    if (!team.healthChecks) return;
+    const healthCheck = team.healthChecks.find(hc => hc.id === healthCheckId);
+    if (healthCheck) {
+      healthCheck.name = newName;
+      saveData(data);
+    }
+  },
+
   saveTemplate: (teamId: string, template: Template) => {
       const data = loadData();
       const team = data.teams.find(t => t.id === teamId);
@@ -617,6 +640,7 @@ export const dataService = {
       password: team.passwordHash,
       memberId: user.id,
       memberEmail: user.email,
+      memberName: user.name, // Add member name for auto-join
       inviteToken: user.inviteToken
     };
 
@@ -815,22 +839,27 @@ export const dataService = {
     const existingByEmail = normalizedEmail
       ? team.members.find((m) => normalizeEmail(m.email) === normalizedEmail)
       : undefined;
-    // Check for existing user by name (case-insensitive, trimmed)
+
+    // Allow matching by name for participants (to prevent duplicates like "Nico" vs "Niko")
+    // But NOT for facilitators (security: prevents impersonation of admins)
     const existingByName = team.members.find((m) =>
-      m.name.trim().toLowerCase() === normalizedName
+      m.role !== 'facilitator' && m.name.trim().toLowerCase() === normalizedName
     );
 
+    // Priority: token > email > name (for participants only)
     const existingUser = existingByToken || existingByEmail || existingByName;
+
     if (existingUser) {
       const matchedByIdentity = (inviteToken && existingUser.inviteToken === inviteToken) ||
         (normalizedEmail && normalizeEmail(existingUser.email) === normalizedEmail);
+      const matchedByName = existingUser.name.trim().toLowerCase() === normalizedName;
 
       if (normalizedEmail && existingUser.email !== normalizedEmail) existingUser.email = normalizedEmail;
       if (inviteToken && !existingUser.inviteToken) existingUser.inviteToken = inviteToken;
 
       const shouldUpdateName =
         !existingUser.joinedBefore ||
-        (!matchedByIdentity && existingUser.name !== userName) ||
+        (!matchedByIdentity && !matchedByName && existingUser.name !== userName) ||
         !existingUser.name;
 
       if (shouldUpdateName) {
@@ -841,6 +870,15 @@ export const dataService = {
 
       saveData(data);
       return { team, user: existingUser };
+    }
+
+    // Security: Prevent impersonation of facilitators
+    const facilitatorWithSameName = team.members.find((m) =>
+      m.role === 'facilitator' && m.name.trim().toLowerCase() === normalizedName
+    );
+    // Block if trying to use facilitator name without proper authentication
+    if (facilitatorWithSameName && !inviteToken && !normalizedEmail) {
+      throw new Error('This name is reserved. Please use a different name or contact the team administrator.');
     }
 
     if (!existingByToken && !existingByEmail && !allowCreateWithoutInvite) {
@@ -861,6 +899,34 @@ export const dataService = {
     team.members.push(newUser);
     saveData(data);
     return { team, user: newUser };
+  },
+
+  autoJoinFromInvite: (
+    teamId: string,
+    inviteData: { memberId?: string; memberEmail?: string; inviteToken?: string }
+  ): { team: Team; user: User } => {
+    const data = loadData();
+    const team = data.teams.find(t => t.id === teamId);
+    if (!team) throw new Error('Team not found');
+
+    const normalizedInviteEmail = normalizeEmail(inviteData.memberEmail);
+    const matchedMember =
+      (inviteData.memberId && team.members.find((member) => member.id === inviteData.memberId)) ||
+      (inviteData.inviteToken && team.members.find((member) => member.inviteToken === inviteData.inviteToken)) ||
+      (normalizedInviteEmail && team.members.find((member) => normalizeEmail(member.email) === normalizedInviteEmail)) ||
+      null;
+
+    if (!matchedMember) {
+      throw new Error('Invitation could not be verified. Please join manually.');
+    }
+
+    return dataService.joinTeamAsParticipant(
+      team.id,
+      matchedMember.name,
+      inviteData.memberEmail,
+      inviteData.inviteToken,
+      true
+    );
   },
 
   // ==================== HEALTH CHECK METHODS ====================
