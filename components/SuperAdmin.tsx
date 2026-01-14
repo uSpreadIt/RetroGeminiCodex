@@ -19,6 +19,7 @@ const SuperAdmin: React.FC<Props> = ({ superAdminPassword, onExit, onAccessTeam 
   const [successMessage, setSuccessMessage] = useState('');
   const [selectedFeedback, setSelectedFeedback] = useState<TeamFeedback | null>(null);
   const [feedbackFilter, setFeedbackFilter] = useState<'all' | 'unread' | 'bug' | 'feature'>('all');
+  const [backupDownloading, setBackupDownloading] = useState(false);
 
   const getRateLimitMessage = async (response: Response) => {
     if (response.status !== 429) return null;
@@ -141,6 +142,61 @@ const SuperAdmin: React.FC<Props> = ({ superAdminPassword, onExit, onAccessTeam 
     setTimeout(() => setSuccessMessage(''), 3000);
   };
 
+  const extractFilenameFromHeader = (header: string | null) => {
+    if (!header) return null;
+    const match = /filename="(?<quoted>[^"]+)"|filename=(?<unquoted>[^;]+)/.exec(header);
+    return match?.groups?.quoted || match?.groups?.unquoted || null;
+  };
+
+  const handleDownloadBackup = async () => {
+    setError('');
+    setSuccessMessage('');
+    setBackupDownloading(true);
+
+    try {
+      const response = await fetch('/api/super-admin/backup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: superAdminPassword })
+      });
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Super admin session expired. Please log in again.');
+        }
+        if (response.status === 404) {
+          throw new Error('Backup data directory not found.');
+        }
+        const rateLimitMessage = await getRateLimitMessage(response);
+        if (rateLimitMessage) {
+          throw new Error(rateLimitMessage);
+        }
+        throw new Error('Failed to generate backup.');
+      }
+
+      const blob = await response.blob();
+      const headerFilename = extractFilenameFromHeader(response.headers.get('Content-Disposition'));
+      const fallbackFilename = `retrogemini-backup-${new Date().toISOString().replace(/[:.]/g, '-')}.tar.gz`;
+      const filename = headerFilename || fallbackFilename;
+
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+
+      setSuccessMessage('Backup downloaded successfully');
+      setTimeout(() => setSuccessMessage(''), 3000);
+    } catch (err: any) {
+      setError(err.message || 'Failed to download backup');
+    } finally {
+      setBackupDownloading(false);
+    }
+  };
+
   const getFilteredFeedbacks = () => {
     return feedbacks.filter(f => {
       if (feedbackFilter === 'unread') return !f.isRead;
@@ -225,6 +281,35 @@ const SuperAdmin: React.FC<Props> = ({ superAdminPassword, onExit, onAccessTeam 
             {successMessage}
           </div>
         )}
+
+        <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                <span className="material-symbols-outlined text-indigo-600">cloud_download</span>
+                Backup Data
+              </h2>
+              <p className="text-sm text-slate-500 mt-1">
+                Download a full archive of the <code className="text-slate-700">/data</code> folder for
+                local recovery or migration.
+              </p>
+            </div>
+            <button
+              onClick={handleDownloadBackup}
+              disabled={backupDownloading}
+              className={`px-4 py-2 rounded-lg font-semibold flex items-center justify-center gap-2 ${
+                backupDownloading
+                  ? 'bg-slate-200 text-slate-500 cursor-not-allowed'
+                  : 'bg-indigo-600 text-white hover:bg-indigo-700'
+              }`}
+            >
+              <span className="material-symbols-outlined text-base">
+                {backupDownloading ? 'sync' : 'download'}
+              </span>
+              {backupDownloading ? 'Preparing Backup...' : 'Download Backup'}
+            </button>
+          </div>
+        </div>
 
         {/* Tabs */}
         <div className="flex border-b border-slate-200 mb-6">

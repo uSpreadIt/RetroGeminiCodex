@@ -4,6 +4,7 @@ import { Server } from 'socket.io';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import fs from 'fs';
+import { spawn } from 'child_process';
 import nodemailer from 'nodemailer';
 import Database from 'better-sqlite3';
 import { timingSafeEqual } from 'crypto';
@@ -334,6 +335,54 @@ app.post('/api/super-admin/update-email', superAdminActionLimiter, (req, res) =>
   savePersistedData(persistedData);
 
   res.json({ success: true });
+});
+
+app.post('/api/super-admin/backup', superAdminActionLimiter, (req, res) => {
+  const { password } = req.body || {};
+
+  if (!SUPER_ADMIN_PASSWORD || !secureCompare(password, SUPER_ADMIN_PASSWORD)) {
+    return res.status(401).json({ error: 'unauthorized' });
+  }
+
+  const dataDir = '/data';
+  if (!fs.existsSync(dataDir)) {
+    return res.status(404).json({ error: 'data_directory_missing' });
+  }
+
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const filename = `retrogemini-backup-${timestamp}.tar.gz`;
+
+  res.setHeader('Content-Type', 'application/gzip');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  res.setHeader('Cache-Control', 'no-store');
+
+  const tarProcess = spawn('tar', ['-czf', '-', '-C', dataDir, '.']);
+
+  tarProcess.on('error', (err) => {
+    console.error('[Server] Failed to create backup archive', err);
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'backup_failed' });
+    } else {
+      res.end();
+    }
+  });
+
+  tarProcess.stderr.on('data', (data) => {
+    console.warn(`[Server] Backup archive stderr: ${data.toString().trim()}`);
+  });
+
+  tarProcess.stdout.pipe(res);
+
+  tarProcess.on('close', (code) => {
+    if (code !== 0) {
+      console.error(`[Server] Backup archive process exited with code ${code}`);
+      if (!res.headersSent) {
+        res.status(500).json({ error: 'backup_failed' });
+      } else {
+        res.end();
+      }
+    }
+  });
 });
 
 // Serve static files from dist folder
