@@ -103,9 +103,9 @@ const parseVersionAndChangelog = () => {
           // Extract bullet points (lines starting with -)
           for (let i = 1; i < lines.length; i++) {
             const line = lines[i].trim();
-            if (line.startsWith('-')) {
+            if (line.startsWith('-') && !line.match(/^-+$/)) {
               const description = line.substring(1).trim();
-              if (description && !description.startsWith('<!--')) {
+              if (description && !description.startsWith('<!--') && !description.match(/^-+$/)) {
                 items.push({ type, description });
               }
             }
