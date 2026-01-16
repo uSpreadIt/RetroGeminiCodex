@@ -57,10 +57,10 @@ spec:
           resources:
             limits:
               cpu: 3m
-              memory: 800Mi
+              memory: 150Mi
             requests:
               cpu: 3m
-              memory: 200Mi
+              memory: 100Mi
           readinessProbe:
             httpGet:
               path: /ready

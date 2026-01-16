@@ -46,10 +46,10 @@ spec:
           resources:
             limits:
               cpu: 2m
-              memory: 600Mi
+              memory: 150Mi
             requests:
               cpu: 2m
-              memory: 300Mi
+              memory: 50Mi
           volumeMounts:
             - name: retrogemini-postgresql-data
               mountPath: /var/lib/pgsql/data
