@@ -49,5 +49,5 @@ oc -n <namespace> set image deployment/retrogemini \
 ## Cleanup
 
 ```bash
-oc delete -k k8s/base
+oc -n <namespace> delete -k k8s/base
 ```
