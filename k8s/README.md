@@ -6,7 +6,7 @@ Apply them with Kustomize so the Secret, PostgreSQL, and the app are created tog
 ## Deploy the manifests
 
 ```bash
-oc apply -k k8s/base
+oc -n <namespace> apply -k k8s/base
 ```
 
 ## Configure secrets with real values
@@ -15,13 +15,24 @@ The manifests include a Secret template at `k8s/base/postgresql-secret.yaml` wit
 Replace the values in your cluster with real credentials before running in production:
 
 ```bash
-oc apply -f k8s/base/postgresql-secret.yaml
-oc create secret generic retrogemini-super-admin \
+oc -n <namespace> create secret generic retrogemini-super-admin \
   --from-literal=POSTGRES_DB=retrogemini \
   --from-literal=POSTGRES_HOST=postgresql \
   --from-literal=POSTGRES_USER=retrogemini \
   --from-literal=POSTGRES_PASSWORD='<your-password>' \
   --from-literal=SUPER_ADMIN_PASSWORD='<your-admin-password>' \
+  --dry-run=client -o yaml | oc apply -f -
+```
+
+If you are using Windows CMD, use `^` for line continuation:
+
+```bat
+oc -n <namespace> create secret generic retrogemini-super-admin ^
+  --from-literal=POSTGRES_DB=retrogemini ^
+  --from-literal=POSTGRES_HOST=postgresql ^
+  --from-literal=POSTGRES_USER=retrogemini ^
+  --from-literal=POSTGRES_PASSWORD="<your-password>" ^
+  --from-literal=SUPER_ADMIN_PASSWORD="<your-admin-password>" ^
   --dry-run=client -o yaml | oc apply -f -
 ```
 
@@ -31,7 +42,7 @@ If your OpenShift cluster cannot reach Docker Hub directly, point the app image 
 You can override the image after applying the manifests:
 
 ```bash
-oc set image deployment/retrogemini \
+oc -n <namespace> set image deployment/retrogemini \
   container=<nexus-host>/jpfroud/retrogemini:latest
 ```
 
