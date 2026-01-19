@@ -45,11 +45,11 @@ spec:
                   key: POSTGRES_DB
           resources:
             limits:
-              cpu: 2m
-              memory: 150Mi
+              cpu: 500m
+              memory: 512Mi
             requests:
-              cpu: 2m
-              memory: 50Mi
+              cpu: 100m
+              memory: 256Mi
           volumeMounts:
             - name: retrogemini-postgresql-data
               mountPath: /var/lib/postgresql/data
