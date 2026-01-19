@@ -37,6 +37,9 @@ oc apply -k k8s/base
 oc apply -k k8s/overlays/openshift
 ```
 
+The OpenShift overlay switches PostgreSQL to the Red Hat image and adjusts the
+expected environment variables and data directory.
+
 ## Configure secrets with real values
 
 The manifests include a Secret template at `k8s/base/postgresql-secret.yaml` with placeholder values.
