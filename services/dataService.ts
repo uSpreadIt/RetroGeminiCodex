@@ -304,8 +304,22 @@ const hydrateFromServer = async (): Promise<void> => {
   return hydrateInFlight;
 };
 
+const refreshFromServer = async (): Promise<void> => {
+  try {
+    const res = await fetch(DATA_ENDPOINT, { cache: 'no-store' });
+    if (!res.ok) throw new Error('Bad status');
+    const remote = await res.json();
+    if (remote?.teams) {
+      dataCache = { teams: remote.teams };
+    }
+  } catch (err) {
+    console.warn('[dataService] Unable to refresh from server', err);
+  }
+};
+
 export const dataService = {
   hydrateFromServer,
+  refreshFromServer,
   ensureSessionPlaceholder,
   createTeam: (name: string, password: string, facilitatorEmail?: string): Team => {
     const data = loadData();
