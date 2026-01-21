@@ -66,6 +66,26 @@ The OpenShift overlay switches PostgreSQL to the Red Hat image and adjusts the
 expected environment variables and data directory. It also resets the app
 Service back to ClusterIP because the Route is the public entrypoint.
 
+## Project structure
+
+```
+k8s/
+├── base/                    # Main manifests (can be applied repeatedly)
+│   ├── kustomization.yaml
+│   ├── deployment.yaml
+│   ├── postgresql-deployment.yaml
+│   └── ...
+├── overlays/
+│   └── openshift/           # OpenShift-specific patches
+└── secrets-templates/       # Example files (NOT applied automatically)
+    ├── postgresql-secret.yaml.example
+    └── smtp-secret.yaml.example
+```
+
+> **Important**: Secrets are intentionally excluded from `kustomization.yaml`.
+> This allows you to run `oc apply -k k8s/base` as many times as needed
+> without overwriting your configured secrets.
+
 ## Configure secrets with real values
 
 > **CRITICAL: Change passwords BEFORE first deployment!**
@@ -76,7 +96,7 @@ Service back to ClusterIP because the Route is the public entrypoint.
 
 ### Recommended deployment order
 
-**Step 1: Create/update the Secret with your passwords FIRST**
+**Step 1: Create the Secrets with your passwords FIRST**
 
 ```bash
 oc -n <namespace> create secret generic retrogemini-super-admin \
@@ -100,7 +120,7 @@ oc -n <namespace> create secret generic retrogemini-super-admin ^
   --dry-run=client -o yaml | oc apply -f -
 ```
 
-**Step 2: Then deploy the application**
+**Step 2: Deploy the application (can be repeated safely)**
 
 ```bash
 oc apply -k k8s/base
@@ -149,8 +169,8 @@ Email functionality is optional. When configured, it enables:
 - Email invitations to join team sessions
 - Password reset emails for teams with a facilitator email
 
-The base manifests include an SMTP secret template at `k8s/base/smtp-secret.yaml` with empty values
-(email disabled by default). To enable email, create the secret with your SMTP credentials:
+See `k8s/secrets-templates/smtp-secret.yaml.example` for a template.
+To enable email, create the secret with your SMTP credentials:
 
 ```bash
 oc -n <namespace> create secret generic retrogemini-smtp \
@@ -189,6 +209,79 @@ oc -n <namespace> create secret generic retrogemini-smtp ^
 
 > **Note**: If `SMTP_HOST` is empty or not set, email features are disabled but the application
 > continues to work normally. Users can still share invite links manually.
+
+## PostgreSQL backups
+
+Regular backups are essential. PostgreSQL data can be corrupted by pod crashes,
+storage issues, or accidental misconfiguration.
+
+### Manual backup
+
+```bash
+# Create a backup
+oc exec deployment/postgresql-retrogemini -- pg_dump -U retrogemini retrogemini > backup_$(date +%Y%m%d_%H%M%S).sql
+
+# Restore from backup (after fresh deployment or data loss)
+oc exec -i deployment/postgresql-retrogemini -- psql -U retrogemini retrogemini < backup_YYYYMMDD_HHMMSS.sql
+```
+
+### Automated backups with CronJob
+
+Create a CronJob to backup daily to a separate PVC:
+
+```yaml
+# k8s/backup-cronjob.yaml
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: postgresql-backup
+spec:
+  schedule: "0 2 * * *"  # Daily at 2 AM
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: backup
+            image: registry.redhat.io/rhel9/postgresql-15:latest
+            command:
+            - /bin/bash
+            - -c
+            - |
+              BACKUP_FILE="/backups/retrogemini_$(date +%Y%m%d_%H%M%S).sql"
+              PGPASSWORD="$POSTGRES_PASSWORD" pg_dump -h postgresql -U "$POSTGRES_USER" "$POSTGRES_DB" > "$BACKUP_FILE"
+              # Keep only last 7 days of backups
+              find /backups -name "*.sql" -mtime +7 -delete
+              echo "Backup completed: $BACKUP_FILE"
+            envFrom:
+            - secretRef:
+                name: retrogemini-super-admin
+            volumeMounts:
+            - name: backup-storage
+              mountPath: /backups
+          restartPolicy: OnFailure
+          volumes:
+          - name: backup-storage
+            persistentVolumeClaim:
+              claimName: postgresql-backups
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgresql-backups
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+```
+
+### Best practices
+
+- **Test your backups**: Regularly restore to a test environment
+- **Store backups off-cluster**: Copy critical backups to external storage (S3, NFS, etc.)
+- **Backup before upgrades**: Always backup before updating the application or PostgreSQL
 
 ## Cleanup
 
