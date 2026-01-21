@@ -56,10 +56,9 @@ spec:
                   key: POSTGRES_HOST
           resources:
             limits:
-              cpu: 300m
               memory: 384Mi
             requests:
-              cpu: 50m
+              cpu: 1m
               memory: 128Mi
           readinessProbe:
             httpGet:
