@@ -45,10 +45,9 @@ spec:
                   key: POSTGRES_DB
           resources:
             limits:
-              cpu: 400m
               memory: 512Mi
             requests:
-              cpu: 100m
+              cpu: 1m
               memory: 256Mi
           volumeMounts:
             - name: retrogemini-postgresql-data
