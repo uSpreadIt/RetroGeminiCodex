@@ -68,15 +68,22 @@ Service back to ClusterIP because the Route is the public entrypoint.
 
 ## Configure secrets with real values
 
-The manifests include a Secret template at `k8s/base/postgresql-secret.yaml` with placeholder values.
-Replace the values in your cluster with real credentials before running in production:
+> **CRITICAL: Change passwords BEFORE first deployment!**
+>
+> PostgreSQL initializes credentials only once, when the database volume is empty.
+> After initialization, changing the Secret will NOT update the passwords in the database,
+> causing authentication failures and pod crash loops.
+
+### Recommended deployment order
+
+**Step 1: Create/update the Secret with your passwords FIRST**
 
 ```bash
 oc -n <namespace> create secret generic retrogemini-super-admin \
   --from-literal=POSTGRES_DB=retrogemini \
   --from-literal=POSTGRES_HOST=postgresql \
   --from-literal=POSTGRES_USER=retrogemini \
-  --from-literal=POSTGRES_PASSWORD='<your-password>' \
+  --from-literal=POSTGRES_PASSWORD='<your-secure-password>' \
   --from-literal=SUPER_ADMIN_PASSWORD='<your-admin-password>' \
   --dry-run=client -o yaml | oc apply -f -
 ```
@@ -88,9 +95,52 @@ oc -n <namespace> create secret generic retrogemini-super-admin ^
   --from-literal=POSTGRES_DB=retrogemini ^
   --from-literal=POSTGRES_HOST=postgresql ^
   --from-literal=POSTGRES_USER=retrogemini ^
-  --from-literal=POSTGRES_PASSWORD="<your-password>" ^
+  --from-literal=POSTGRES_PASSWORD="<your-secure-password>" ^
   --from-literal=SUPER_ADMIN_PASSWORD="<your-admin-password>" ^
   --dry-run=client -o yaml | oc apply -f -
+```
+
+**Step 2: Then deploy the application**
+
+```bash
+oc apply -k k8s/base
+oc apply -k k8s/overlays/openshift  # for OpenShift only
+```
+
+### Changing passwords after initial deployment
+
+If PostgreSQL is already initialized and you need to change the password:
+
+**Option A: Fresh start (data loss)**
+
+```bash
+# Delete the PVC to reset the database
+oc -n <namespace> delete pvc retrogemini-postgresql-data
+
+# Update the Secret with new password (see Step 1 above)
+
+# Redeploy - PostgreSQL will reinitialize with new credentials
+oc rollout restart deployment/postgresql-retrogemini
+```
+
+**Option B: Keep existing data**
+
+```bash
+# 1. Update password in PostgreSQL
+oc exec -it deployment/postgresql-retrogemini -- psql -U retrogemini -c \
+  "ALTER USER retrogemini WITH PASSWORD '<new-password>';"
+
+# 2. Update the Secret to match
+oc -n <namespace> create secret generic retrogemini-super-admin \
+  --from-literal=POSTGRES_DB=retrogemini \
+  --from-literal=POSTGRES_HOST=postgresql \
+  --from-literal=POSTGRES_USER=retrogemini \
+  --from-literal=POSTGRES_PASSWORD='<new-password>' \
+  --from-literal=SUPER_ADMIN_PASSWORD='<your-admin-password>' \
+  --dry-run=client -o yaml | oc apply -f -
+
+# 3. Restart the app to pick up new Secret
+oc rollout restart deployment/retrogemini
 ```
 
 ## Configure SMTP for email (optional)
