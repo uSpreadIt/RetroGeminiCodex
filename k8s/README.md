@@ -4,6 +4,9 @@
 
 1. [Deployment workflow](#deployment-workflow)
 2. [Quick start](#quick-start)
+   - [Kubernetes](#kubernetes)
+   - [OpenShift](#openshift)
+   - [Using a private registry](#using-a-private-registry-nexus-harbor-etc)
 3. [Project structure](#project-structure)
 4. [Secrets reference](#secrets-reference)
 5. [PostgreSQL management](#postgresql-management)
@@ -73,6 +76,18 @@ oc apply -k k8s/overlays/openshift
 
 The OpenShift overlay uses the Red Hat PostgreSQL image and creates a Route.
 
+### Using a private registry (Nexus, Harbor, etc.)
+
+If you use a private container registry, update the deployment image after applying:
+
+```bash
+# OpenShift
+oc set image deployment/retrogemini retrogemini=<your-registry>/jpfroud/retrogemini:3.1
+
+# Kubernetes
+kubectl set image deployment/retrogemini retrogemini=<your-registry>/jpfroud/retrogemini:3.1 -n retrogemini
+```
+
 ---
 
 ## Project structure
@@ -135,8 +150,6 @@ stringData:
 ```
 
 See the main [README.md](../README.md#configuration) for SMTP variable details.
-
----
 
 ---
 
