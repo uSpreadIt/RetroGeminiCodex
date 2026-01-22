@@ -18,9 +18,14 @@ The deployment follows a **specific order** to ensure secrets are created before
 
 ```
 1. Create namespace
-2. Apply secrets (FIRST TIME ONLY)
-3. Deploy base + overlays (can be repeated safely)
+2. Edit secret files with your FINAL values
+3. Apply secrets (FIRST TIME ONLY)
+4. Deploy base + overlays (can be repeated safely)
 ```
+
+> **CRITICAL**: PostgreSQL initializes passwords **once** when the volume is created.
+> You **cannot change passwords later** by simply updating the Secret.
+> Always set your **final production values** before applying secrets.
 
 > **Key point**: Secrets are **separated** from the main kustomization.
 > Running `kubectl apply -k k8s/base` multiple times will **never overwrite your secrets**.
@@ -35,18 +40,18 @@ The deployment follows a **specific order** to ensure secrets are created before
 # 1. Create namespace
 kubectl create namespace retrogemini
 
-# 2. Apply secrets FIRST (only needed once)
-#    Default values allow immediate testing - update them later for production
+# 2. Edit secrets with your FINAL values (passwords cannot be changed later!)
+nano k8s/secrets-templates/postgresql-secret.yaml
+
+# 3. Apply secrets (only needed once - values are permanent)
 kubectl apply -f k8s/secrets-templates/postgresql-secret.yaml -n retrogemini
 kubectl apply -f k8s/secrets-templates/smtp-secret.yaml -n retrogemini  # optional
 
-# 3. Deploy application
+# 4. Deploy application
 kubectl apply -k k8s/base -n retrogemini
 ```
 
 Access at http://localhost:30080 (NodePort).
-
-**For production**: Edit the secret files with your real values before step 2, or update the secrets later (see [Changing secrets](#changing-secrets-after-deployment)).
 
 ### OpenShift
 
@@ -54,12 +59,14 @@ Access at http://localhost:30080 (NodePort).
 # 1. Create project
 oc new-project retrogemini
 
-# 2. Apply secrets FIRST (only needed once)
-#    Default values allow immediate testing - update them later for production
+# 2. Edit secrets with your FINAL values (passwords cannot be changed later!)
+nano k8s/secrets-templates/postgresql-secret.yaml
+
+# 3. Apply secrets (only needed once - values are permanent)
 oc apply -f k8s/secrets-templates/postgresql-secret.yaml
 oc apply -f k8s/secrets-templates/smtp-secret.yaml  # optional
 
-# 3. Deploy application
+# 4. Deploy application
 oc apply -k k8s/base
 oc apply -k k8s/overlays/openshift
 ```
@@ -105,11 +112,11 @@ stringData:
   SUPER_ADMIN_PASSWORD: change-me     # Update for production!
 ```
 
-> **CRITICAL**: PostgreSQL initializes credentials only once (when the volume is empty).
-> Changing the Secret later will NOT update the database passwords.
-> See [Changing secrets after deployment](#changing-secrets-after-deployment) if you need to update them.
+> **CRITICAL**: PostgreSQL initializes credentials **only once** (when the volume is empty).
+> Changing the Secret later will **NOT** update the database passwords.
+> **Always edit this file with your final values BEFORE applying.**
 
-**Default values** (`change-me`) work for quick testing but should be changed for any real deployment.
+If you need to change passwords after deployment, see [Changing secrets after deployment](#changing-secrets-after-deployment).
 
 ### SMTP (optional)
 
@@ -130,33 +137,6 @@ stringData:
 See the main [README.md](../README.md#configuration) for SMTP variable details.
 
 ---
-
-## Updating secrets for production
-
-After initial testing, update your secrets with real values:
-
-### Option A: Edit and reapply (before first pod start)
-
-```bash
-# 1. Edit the secret files with your real values
-nano k8s/secrets-templates/postgresql-secret.yaml
-
-# 2. Delete and recreate the secret
-kubectl delete secret retrogemini-super-admin -n retrogemini
-kubectl apply -f k8s/secrets-templates/postgresql-secret.yaml -n retrogemini
-```
-
-### Option B: Use kubectl directly
-
-```bash
-kubectl -n retrogemini create secret generic retrogemini-super-admin \
-  --from-literal=POSTGRES_DB=retrogemini \
-  --from-literal=POSTGRES_HOST=postgresql \
-  --from-literal=POSTGRES_USER=retrogemini \
-  --from-literal=POSTGRES_PASSWORD='your-secure-password' \
-  --from-literal=SUPER_ADMIN_PASSWORD='your-admin-password' \
-  --dry-run=client -o yaml | kubectl apply -f -
-```
 
 ---
 
