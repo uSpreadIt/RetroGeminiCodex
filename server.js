@@ -14,6 +14,7 @@ import { createAdapter as createRedisAdapter } from '@socket.io/redis-adapter';
 import { createAdapter as createPostgresAdapter } from '@socket.io/postgres-adapter';
 import { createClient } from 'redis';
 import { resolveSocketAdapterStrategy, SOCKET_ADAPTER_STRATEGIES } from './socketAdapter.js';
+import { compactInviteLink } from './utils/inviteLink.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -591,6 +592,8 @@ app.post('/api/send-invite', async (req, res) => {
     return res.status(400).json({ error: 'missing_fields' });
   }
 
+  const compactedLink = compactInviteLink(link);
+
   try {
     await mailer.sendMail({
       from: process.env.FROM_EMAIL || process.env.SMTP_USER,
@@ -599,11 +602,11 @@ app.post('/api/send-invite', async (req, res) => {
       text: `${name || 'You'},
 
 You have been invited to join ${teamName || 'a RetroGemini team'}${sessionName ? ` for the session "${sessionName}"` : ''}.
-Use this link to join: ${link}
+Use this link to join: ${compactedLink}
 `,
       html: `<p>${name || 'You'},</p>
 <p>You have been invited to join <strong>${teamName || 'a RetroGemini team'}</strong>${sessionName ? ` for the session "${sessionName}"` : ''}.</p>
-<p><a href="${link}" target="_blank" rel="noreferrer">Join with this link</a></p>`
+<p><a href="${compactedLink}" target="_blank" rel="noreferrer">Join with this link</a></p>`
     });
 
     res.status(204).end();
