@@ -42,6 +42,7 @@ RUN npm ci --omit=dev --prefer-offline --no-audit \
 COPY --from=builder /app/dist ./dist
 COPY server.js ./server.js
 COPY socketAdapter.js ./socketAdapter.js
+COPY utils ./utils
 COPY VERSION ./VERSION
 COPY CHANGELOG.md ./CHANGELOG.md
 COPY docker-entrypoint.sh /docker-entrypoint.sh
