@@ -5,10 +5,9 @@ import { dataService } from '../services/dataService';
 interface Props {
   superAdminPassword: string;
   onExit: () => void;
-  onAccessTeam: (team: Team) => void;
 }
 
-const SuperAdmin: React.FC<Props> = ({ superAdminPassword, onExit, onAccessTeam }) => {
+const SuperAdmin: React.FC<Props> = ({ superAdminPassword, onExit }) => {
   const [tab, setTab] = useState<'TEAMS' | 'FEEDBACKS'>('TEAMS');
   const [teams, setTeams] = useState<Team[]>([]);
   const [feedbacks, setFeedbacks] = useState<TeamFeedback[]>([]);
@@ -789,13 +788,6 @@ const SuperAdmin: React.FC<Props> = ({ superAdminPassword, onExit, onAccessTeam 
                                 title="Edit recovery email"
                               >
                                 Edit Email
-                              </button>
-                              <button
-                                onClick={() => onAccessTeam(team)}
-                                className="bg-indigo-600 text-white px-3 py-1 rounded hover:bg-indigo-700 text-sm font-medium"
-                                title="Access team dashboard"
-                              >
-                                Access Team
                               </button>
                             </div>
                           )}

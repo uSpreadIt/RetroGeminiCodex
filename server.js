@@ -705,9 +705,18 @@ app.post('/api/super-admin/teams', superAdminActionLimiter, (req, res) => {
     return res.status(401).json({ error: 'unauthorized' });
   }
 
-  // Return all teams data
+  // Return only team metadata (no session content for privacy)
   refreshPersistedData()
-    .then((currentData) => res.json({ teams: currentData.teams }))
+    .then((currentData) => {
+      const sanitizedTeams = currentData.teams.map((t) => ({
+        id: t.id,
+        name: t.name,
+        facilitatorEmail: t.facilitatorEmail,
+        members: (t.members || []).map((m) => ({ id: m.id, name: m.name, color: m.color, role: m.role })),
+        lastConnectionDate: t.lastConnectionDate
+      }));
+      res.json({ teams: sanitizedTeams });
+    })
     .catch((err) => {
       console.error('[Server] Failed to load persisted data', err);
       res.status(500).json({ error: 'failed_to_load' });

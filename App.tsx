@@ -424,19 +424,6 @@ const App: React.FC = () => {
     setView('LOGIN');
   };
 
-  const handleSuperAdminAccessTeam = (team: Team) => {
-    // Create a super admin user for this team
-    const adminUser: User = {
-      id: 'super-admin-' + Date.now(),
-      name: 'Super Admin',
-      color: 'bg-red-600',
-      role: 'facilitator'
-    };
-    setCurrentTeam(team);
-    setCurrentUser(adminUser);
-    setView('DASHBOARD');
-    setSuperAdminPassword(null);
-  };
 
   if (!hydrated) {
     return <div className="h-screen flex items-center justify-center text-slate-500">Loading workspace…</div>;
@@ -447,7 +434,6 @@ const App: React.FC = () => {
       <SuperAdmin
         superAdminPassword={superAdminPassword}
         onExit={handleSuperAdminExit}
-        onAccessTeam={handleSuperAdminAccessTeam}
       />
     );
   }
