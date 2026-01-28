@@ -182,12 +182,11 @@ const App: React.FC = () => {
         } else {
           window.history.replaceState({}, document.title, '/');
         }
-      } else if (saved.view === 'SESSION' && saved.activeSessionId) {
+      }
+
+      if (saved.view === 'SESSION' || saved.view === 'HEALTH_CHECK') {
         setView('DASHBOARD');
         setActiveSessionId(null);
-        return;
-      } else if (saved.view === 'HEALTH_CHECK' && saved.activeHealthCheckId) {
-        setView('DASHBOARD');
         setActiveHealthCheckId(null);
         return;
       }
@@ -252,6 +251,16 @@ const App: React.FC = () => {
       window.history.replaceState({}, document.title, '/');
     }
   }, [view, activeSessionId, activeHealthCheckId, hydrated]);
+
+  useEffect(() => {
+    if (!currentTeam) return;
+    if (view === 'SESSION' && !activeSessionId) {
+      setView('DASHBOARD');
+    }
+    if (view === 'HEALTH_CHECK' && !activeHealthCheckId) {
+      setView('DASHBOARD');
+    }
+  }, [currentTeam, view, activeSessionId, activeHealthCheckId]);
 
   // Participants should never remain on the dashboard; force them into a session or log them out.
   useEffect(() => {

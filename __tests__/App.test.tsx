@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, waitFor, fireEvent, screen } from '@testing-library/react';
+import { render, waitFor, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import App from '../App';
 import { dataService } from '../services/dataService';
 import type { Team, User } from '../types';
@@ -97,10 +98,55 @@ describe('App Component', () => {
     render(<App />);
 
     const logoutButton = await screen.findByTitle('Logout Team');
-    fireEvent.click(logoutButton);
+    const user = userEvent.setup();
+    await user.click(logoutButton);
 
     await waitFor(() => {
       expect(screen.getByText('Your Teams')).toBeInTheDocument();
+    });
+  });
+
+  it('should fall back to dashboard when saved session view has no active id', async () => {
+    const mockUser = {
+      id: 'user-1',
+      name: 'Facilitator',
+      role: 'facilitator',
+      color: 'bg-indigo-500',
+    } satisfies User;
+
+    const mockTeam = {
+      id: 'team-1',
+      name: 'Alpha',
+      passwordHash: 'secret',
+      members: [mockUser],
+      retrospectives: [],
+      healthChecks: [],
+      globalActions: [],
+      customTemplates: [],
+      archivedMembers: [],
+      lastConnectionDate: new Date().toISOString(),
+    } satisfies Team;
+
+    const mockedGetTeam = vi.mocked(dataService.getTeam);
+    mockedGetTeam.mockReturnValue(mockTeam);
+
+    localStorage.setItem(
+      'retro-open-session',
+      JSON.stringify({
+        teamId: mockTeam.id,
+        userId: mockTeam.members[0].id,
+        userEmail: null,
+        userName: mockTeam.members[0].name,
+        view: 'SESSION',
+        activeSessionId: null,
+        activeHealthCheckId: null,
+      })
+    );
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Dashboard')).toBeInTheDocument();
     });
   });
 });
