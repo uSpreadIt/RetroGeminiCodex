@@ -9,6 +9,7 @@ let dataCache: { teams: Team[] } = { teams: [] };
 let dataRevision = 0;
 let dataUpdatedAt: string | null = null;
 let persistQueue: Promise<void> = Promise.resolve();
+let dirtyFlag = false;
 
 export class InviteAutoJoinError extends Error {
   code: 'INVITE_NOT_VERIFIED';
@@ -240,42 +241,260 @@ const applyServerPayload = (payload: DataEnvelope | null | undefined) => {
   }
 };
 
-const persistToServer = async () => {
-  const payload: DataEnvelope = {
-    teams: dataCache.teams,
-    meta: {
-      revision: dataRevision,
-      updatedAt: dataUpdatedAt || new Date().toISOString()
+// Track the server's last-known state so we can compute user diffs on conflict.
+let serverSnapshot: Team[] = [];
+
+const updateServerSnapshot = () => {
+  serverSnapshot = JSON.parse(JSON.stringify(dataCache.teams));
+};
+
+/**
+ * Three-way merge: apply the user's changes on top of the server's fresh data.
+ * Works at the team/member/session level to preserve concurrent edits from
+ * different clients (e.g., Browser A edits email-1, Browser B edits email-2).
+ */
+const mergeUserChangesOntoServer = (serverTeams: Team[], userTeams: Team[], baseTeams: Team[]): Team[] => {
+  // Start with server data as the base
+  const merged: Team[] = JSON.parse(JSON.stringify(serverTeams));
+
+  for (const userTeam of userTeams) {
+    const baseTeam = baseTeams.find(t => t.id === userTeam.id);
+    const serverTeam = merged.find(t => t.id === userTeam.id);
+
+    if (!baseTeam) {
+      if (!serverTeam) {
+        // Team created by user, not on server — add it
+        merged.push(JSON.parse(JSON.stringify(userTeam)));
+      } else if (JSON.stringify(userTeam) !== JSON.stringify(serverTeam)) {
+        // No base snapshot for this team but both user and server have it.
+        // This happens when the snapshot hasn't been updated yet (e.g., the
+        // very first persist after hydration). Prefer the user's version
+        // since the dirty flag was set by an explicit user action.
+        Object.assign(serverTeam, JSON.parse(JSON.stringify(userTeam)));
+      }
+      continue;
     }
-  };
 
-  try {
-    const res = await fetch(DATA_ENDPOINT, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-
-    if (res.status === 409) {
-      const serverPayload = await res.json().catch(() => null);
-      console.warn('[dataService] Persist conflict detected, refreshing local cache');
-      applyServerPayload(serverPayload);
-      return;
+    if (!serverTeam) {
+      // Team was deleted on server — don't re-add
+      continue;
     }
 
-    if (!res.ok) {
-      console.warn('[dataService] Failed to persist to server', res.status);
-      return;
+    // Compare user's team to the base snapshot to detect what changed
+    if (JSON.stringify(userTeam) === JSON.stringify(baseTeam)) {
+      // No changes in this team — keep server version
+      continue;
     }
 
-    if (res.status !== 204) {
-      const serverPayload = await res.json().catch(() => null);
-      if (serverPayload) {
-        applyServerPayload(serverPayload);
+    // Merge members: apply per-member changes from user on top of server
+    const mergedMembers: User[] = JSON.parse(JSON.stringify(serverTeam.members || []));
+    for (const userMember of (userTeam.members || [])) {
+      const baseMember = (baseTeam.members || []).find(m => m.id === userMember.id);
+      const serverMemberIdx = mergedMembers.findIndex(m => m.id === userMember.id);
+
+      if (!baseMember) {
+        // New member added by user — add if not on server
+        if (serverMemberIdx < 0) mergedMembers.push(JSON.parse(JSON.stringify(userMember)));
+        continue;
+      }
+
+      if (JSON.stringify(userMember) !== JSON.stringify(baseMember)) {
+        // User changed this member — apply user's version
+        if (serverMemberIdx >= 0) {
+          mergedMembers[serverMemberIdx] = JSON.parse(JSON.stringify(userMember));
+        } else {
+          mergedMembers.push(JSON.parse(JSON.stringify(userMember)));
+        }
+      }
+      // else: user didn't change this member — keep server version
+    }
+    serverTeam.members = mergedMembers;
+
+    // Merge archived members the same way
+    const mergedArchived: User[] = JSON.parse(JSON.stringify(serverTeam.archivedMembers || []));
+    for (const userArchived of (userTeam.archivedMembers || [])) {
+      const baseArchived = (baseTeam.archivedMembers || []).find(m => m.id === userArchived.id);
+      const serverArchivedIdx = mergedArchived.findIndex(m => m.id === userArchived.id);
+      if (!baseArchived) {
+        if (serverArchivedIdx < 0) mergedArchived.push(JSON.parse(JSON.stringify(userArchived)));
+        continue;
+      }
+      if (JSON.stringify(userArchived) !== JSON.stringify(baseArchived)) {
+        if (serverArchivedIdx >= 0) {
+          mergedArchived[serverArchivedIdx] = JSON.parse(JSON.stringify(userArchived));
+        } else {
+          mergedArchived.push(JSON.parse(JSON.stringify(userArchived)));
+        }
       }
     }
-  } catch (err) {
-    console.warn('[dataService] Failed to persist to server', err);
+    serverTeam.archivedMembers = mergedArchived;
+
+    // Merge scalar team fields that the user changed
+    const scalarFields: (keyof Team)[] = ['name', 'passwordHash', 'facilitatorEmail', 'lastConnectionDate'];
+    for (const field of scalarFields) {
+      if (JSON.stringify(userTeam[field]) !== JSON.stringify(baseTeam[field])) {
+        // User changed this field — apply user's version
+        (serverTeam as unknown as Record<string, unknown>)[field] = JSON.parse(JSON.stringify(userTeam[field]));
+      }
+    }
+
+    // Merge retrospectives by ID
+    const mergedRetros = JSON.parse(JSON.stringify(serverTeam.retrospectives || [])) as RetroSession[];
+    for (const userRetro of (userTeam.retrospectives || [])) {
+      const baseRetro = (baseTeam.retrospectives || []).find(r => r.id === userRetro.id);
+      const serverRetroIdx = mergedRetros.findIndex(r => r.id === userRetro.id);
+      if (!baseRetro) {
+        if (serverRetroIdx < 0) mergedRetros.push(JSON.parse(JSON.stringify(userRetro)));
+        continue;
+      }
+      if (JSON.stringify(userRetro) !== JSON.stringify(baseRetro)) {
+        if (serverRetroIdx >= 0) {
+          mergedRetros[serverRetroIdx] = JSON.parse(JSON.stringify(userRetro));
+        } else {
+          mergedRetros.push(JSON.parse(JSON.stringify(userRetro)));
+        }
+      }
+    }
+    serverTeam.retrospectives = mergedRetros;
+
+    // Merge health checks by ID
+    const mergedHCs = JSON.parse(JSON.stringify(serverTeam.healthChecks || [])) as HealthCheckSession[];
+    for (const userHC of (userTeam.healthChecks || [])) {
+      const baseHC = (baseTeam.healthChecks || []).find(h => h.id === userHC.id);
+      const serverHCIdx = mergedHCs.findIndex(h => h.id === userHC.id);
+      if (!baseHC) {
+        if (serverHCIdx < 0) mergedHCs.push(JSON.parse(JSON.stringify(userHC)));
+        continue;
+      }
+      if (JSON.stringify(userHC) !== JSON.stringify(baseHC)) {
+        if (serverHCIdx >= 0) {
+          mergedHCs[serverHCIdx] = JSON.parse(JSON.stringify(userHC));
+        } else {
+          mergedHCs.push(JSON.parse(JSON.stringify(userHC)));
+        }
+      }
+    }
+    serverTeam.healthChecks = mergedHCs;
+
+    // Merge global actions by ID
+    const mergedActions = JSON.parse(JSON.stringify(serverTeam.globalActions || [])) as ActionItem[];
+    for (const userAction of (userTeam.globalActions || [])) {
+      const baseAction = (baseTeam.globalActions || []).find(a => a.id === userAction.id);
+      const serverActionIdx = mergedActions.findIndex(a => a.id === userAction.id);
+      if (!baseAction) {
+        if (serverActionIdx < 0) mergedActions.push(JSON.parse(JSON.stringify(userAction)));
+        continue;
+      }
+      if (JSON.stringify(userAction) !== JSON.stringify(baseAction)) {
+        if (serverActionIdx >= 0) {
+          mergedActions[serverActionIdx] = JSON.parse(JSON.stringify(userAction));
+        } else {
+          mergedActions.push(JSON.parse(JSON.stringify(userAction)));
+        }
+      }
+    }
+    serverTeam.globalActions = mergedActions;
+
+    // Merge remaining array fields (customTemplates, customHealthCheckTemplates, teamFeedbacks)
+    if (JSON.stringify(userTeam.customTemplates) !== JSON.stringify(baseTeam.customTemplates)) {
+      serverTeam.customTemplates = JSON.parse(JSON.stringify(userTeam.customTemplates));
+    }
+    if (JSON.stringify(userTeam.customHealthCheckTemplates) !== JSON.stringify(baseTeam.customHealthCheckTemplates)) {
+      serverTeam.customHealthCheckTemplates = JSON.parse(JSON.stringify(userTeam.customHealthCheckTemplates));
+    }
+    if (JSON.stringify(userTeam.teamFeedbacks) !== JSON.stringify(baseTeam.teamFeedbacks)) {
+      serverTeam.teamFeedbacks = JSON.parse(JSON.stringify(userTeam.teamFeedbacks));
+    }
+  }
+
+  // Handle teams that exist only on server (user deleted or never had them)
+  // — keep the server's version (don't delete teams the user doesn't know about)
+
+  // Handle teams that exist in user but NOT in server and NOT in base
+  // (already handled above as "new team")
+
+  return merged;
+};
+
+const MAX_CONFLICT_RETRIES = 3;
+
+const persistToServer = async () => {
+  // Only persist if client has made meaningful changes
+  if (!dirtyFlag) {
+    return;
+  }
+
+  for (let attempt = 0; attempt <= MAX_CONFLICT_RETRIES; attempt++) {
+    const payload: DataEnvelope = {
+      teams: dataCache.teams,
+      meta: {
+        revision: dataRevision,
+        updatedAt: dataUpdatedAt || new Date().toISOString()
+      }
+    };
+
+    try {
+      const res = await fetch(DATA_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (res.status === 409) {
+        const serverPayload: DataEnvelope | null = await res.json().catch(() => null);
+        console.warn(`[dataService] Persist conflict detected (attempt ${attempt + 1}/${MAX_CONFLICT_RETRIES + 1})`);
+
+        if (!serverPayload) {
+          dirtyFlag = false;
+          return;
+        }
+
+        // Capture user's current changes before applying server data
+        const userTeams: Team[] = JSON.parse(JSON.stringify(dataCache.teams));
+        const baseTeams: Team[] = JSON.parse(JSON.stringify(serverSnapshot));
+
+        // Apply server data to update revision/timestamp
+        applyServerPayload(serverPayload);
+
+        // Three-way merge: apply user's changes on top of server data
+        const mergedTeams = mergeUserChangesOntoServer(
+          dataCache.teams,
+          userTeams,
+          baseTeams
+        );
+        dataCache = { teams: mergedTeams };
+
+        // On last attempt, accept whatever we have and stop
+        if (attempt >= MAX_CONFLICT_RETRIES) {
+          console.warn('[dataService] Max conflict retries reached');
+          dirtyFlag = false;
+          updateServerSnapshot();
+          return;
+        }
+        // Otherwise retry with merged data and updated revision
+        continue;
+      }
+
+      if (!res.ok) {
+        console.warn('[dataService] Failed to persist to server', res.status);
+        return;
+      }
+
+      if (res.status !== 204) {
+        const serverPayload = await res.json().catch(() => null);
+        if (serverPayload) {
+          applyServerPayload(serverPayload);
+        }
+      }
+
+      // Success — update snapshot and clear dirty flag
+      dirtyFlag = false;
+      updateServerSnapshot();
+      return;
+    } catch (err) {
+      console.warn('[dataService] Failed to persist to server', err);
+      return;
+    }
   }
 };
 
@@ -289,7 +508,18 @@ const queuePersist = () => {
 
 const saveData = (data: { teams: Team[] }) => {
   dataCache = data;
+  dirtyFlag = true;
   queuePersist();
+};
+
+/**
+ * Update the local cache without triggering a server persist.
+ * Used for read-only operations like loginTeam that only update
+ * non-critical fields (lastConnectionDate) and should not risk
+ * overwriting concurrent changes from other clients.
+ */
+const updateCacheOnly = (data: { teams: Team[] }) => {
+  dataCache = data;
 };
 
 const ensureSessionPlaceholder = (teamId: string, sessionId: string): RetroSession | undefined => {
@@ -351,6 +581,8 @@ const hydrateFromServer = async (): Promise<void> => {
       const remote = await res.json();
       if (remote?.teams) {
         applyServerPayload(remote);
+        dirtyFlag = false;
+        updateServerSnapshot();
       }
     } catch (err) {
       console.warn('[dataService] Unable to hydrate from server, using in-memory cache', err);
@@ -370,6 +602,10 @@ const refreshFromServer = async (): Promise<void> => {
     const remote = await res.json();
     if (remote?.teams) {
       applyServerPayload(remote);
+      // After refreshing from server, the local cache matches the server.
+      // Clear dirty flag to prevent re-persisting server data back.
+      dirtyFlag = false;
+      updateServerSnapshot();
     }
   } catch (err) {
     console.warn('[dataService] Unable to refresh from server', err);
@@ -417,7 +653,11 @@ export const dataService = {
     if (team.passwordHash !== password) throw new Error('Invalid password');
     if (!team.archivedMembers) team.archivedMembers = [];
     team.lastConnectionDate = new Date().toISOString();
-    saveData(data);
+    // Use updateCacheOnly instead of saveData to avoid persisting
+    // potentially stale data to the server. The lastConnectionDate
+    // update is non-critical and will be included in the next
+    // meaningful save operation.
+    updateCacheOnly(data);
     return team;
   },
 
