@@ -140,6 +140,11 @@ const App: React.FC = () => {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return;
       const saved = JSON.parse(raw);
+      if (saved.view === 'LOGIN') {
+        localStorage.removeItem(STORAGE_KEY);
+        return;
+      }
+
       const team = dataService.getTeam(saved.teamId);
       if (!team) return;
 
@@ -191,11 +196,6 @@ const App: React.FC = () => {
         return;
       }
 
-      if (saved.view === 'LOGIN') {
-        setView('DASHBOARD');
-        return;
-      }
-
       setView(saved.view || 'DASHBOARD');
     } catch (err) {
       console.warn('Unable to restore previous session', err);
@@ -203,6 +203,13 @@ const App: React.FC = () => {
   }, [hydrated, currentTeam]);
 
   useEffect(() => {
+    if (view === 'LOGIN') {
+      if (hydrated) {
+        localStorage.removeItem(STORAGE_KEY);
+      }
+      return;
+    }
+
     if (!currentTeam || !currentUser) {
       if (hydrated) {
         localStorage.removeItem(STORAGE_KEY);

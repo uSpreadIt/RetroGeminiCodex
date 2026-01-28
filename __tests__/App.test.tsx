@@ -190,7 +190,53 @@ describe('App Component', () => {
     render(<App />);
 
     await waitFor(() => {
-      expect(screen.getByText('Dashboard')).toBeInTheDocument();
+      expect(screen.getByText('Your Teams')).toBeInTheDocument();
     });
+  });
+
+  it('should clear persisted session state when restoring a LOGIN view', async () => {
+    const mockUser = {
+      id: 'user-1',
+      name: 'Facilitator',
+      role: 'facilitator',
+      color: 'bg-indigo-500',
+    } satisfies User;
+
+    const mockTeam = {
+      id: 'team-1',
+      name: 'Alpha',
+      passwordHash: 'secret',
+      members: [mockUser],
+      retrospectives: [],
+      healthChecks: [],
+      globalActions: [],
+      customTemplates: [],
+      archivedMembers: [],
+      lastConnectionDate: new Date().toISOString(),
+    } satisfies Team;
+
+    const mockedGetTeam = vi.mocked(dataService.getTeam);
+    mockedGetTeam.mockReturnValue(mockTeam);
+
+    localStorage.setItem(
+      'retro-open-session',
+      JSON.stringify({
+        teamId: mockTeam.id,
+        userId: mockTeam.members[0].id,
+        userEmail: null,
+        userName: mockTeam.members[0].name,
+        view: 'LOGIN',
+        activeSessionId: null,
+        activeHealthCheckId: null,
+      })
+    );
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Your Teams')).toBeInTheDocument();
+    });
+
+    expect(localStorage.getItem('retro-open-session')).toBeNull();
   });
 });
