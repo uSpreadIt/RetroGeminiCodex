@@ -4,7 +4,7 @@
 # =============================================================================
 # Stage 1: Build
 # =============================================================================
-FROM node:20-alpine3.23.3 AS builder
+FROM node:20-alpine AS builder
 
 WORKDIR /app
 
@@ -12,7 +12,8 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install dependencies
-RUN npm ci --prefer-offline --no-audit
+RUN apk upgrade --no-cache \
+  && npm ci --prefer-offline --no-audit
 
 # Copy source code
 COPY . .
@@ -23,7 +24,7 @@ RUN npm run build
 # =============================================================================
 # Stage 2: Production runtime with WebSocket server
 # =============================================================================
-FROM node:20-alpine3.23.3 AS production
+FROM node:20-alpine AS production
 
 WORKDIR /app
 
@@ -31,7 +32,8 @@ ENV NODE_ENV=production
 ENV PORT=8080
 
 # Install su-exec for dropping privileges and runtime dependencies
-RUN apk add --no-cache su-exec
+RUN apk upgrade --no-cache \
+  && apk add --no-cache su-exec
 
 COPY package*.json ./
 RUN npm ci --omit=dev --prefer-offline --no-audit \
