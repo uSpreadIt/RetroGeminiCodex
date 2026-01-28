@@ -191,6 +191,11 @@ const App: React.FC = () => {
         return;
       }
 
+      if (saved.view === 'LOGIN') {
+        setView('DASHBOARD');
+        return;
+      }
+
       setView(saved.view || 'DASHBOARD');
     } catch (err) {
       console.warn('Unable to restore previous session', err);
