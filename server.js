@@ -73,7 +73,7 @@ const initRedisAdapter = async (redisConfig) => {
 
     await Promise.all([pubClient.connect(), subClient.connect()]);
     io.adapter(createRedisAdapter(pubClient, subClient));
-    console.info('[Server] Using Redis adapter for Socket.IO (multi-pod ready)');
+    console.info('[Server] Using Redis adapter for Socket IO (multi-pod ready)');
     return true;
   } catch (err) {
     console.error('[Server] Failed to initialize Redis adapter', err);
@@ -96,7 +96,7 @@ const initPostgresAdapter = async () => {
     `);
 
     io.adapter(createPostgresAdapter(pgPool));
-    console.info('[Server] Using PostgreSQL adapter for Socket.IO (multi-pod ready)');
+    console.info('[Server] Using PostgreSQL adapter for Socket IO (multi-pod ready)');
     return true;
   } catch (err) {
     console.error('[Server] Failed to initialize PostgreSQL adapter', err);
@@ -119,8 +119,43 @@ const initSocketAdapter = async () => {
     return initPostgresAdapter();
   }
 
-  console.info('[Server] Using in-memory Socket.IO adapter (single-pod)');
+  console.info('[Server] Using in-memory Socket IO adapter (single-pod)');
   return false;
+};
+
+const escapeHtml = (value = '') => {
+  return String(value).replace(/[&<>"']/g, (char) => {
+    switch (char) {
+      case '&':
+        return '&amp;';
+      case '<':
+        return '&lt;';
+      case '>':
+        return '&gt;';
+      case '"':
+        return '&quot;';
+      case "'":
+        return '&#39;';
+      default:
+        return char;
+    }
+  });
+};
+
+const sanitizeEmailLink = (value) => {
+  if (!value) {
+    return '';
+  }
+
+  try {
+    const url = new URL(String(value));
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+      return '';
+    }
+    return url.toString();
+  } catch {
+    return '';
+  }
 };
 
 // Health endpoints for platform monitoring
@@ -700,7 +735,7 @@ console.error = (...args) => {
   let source = 'server';
   if (message.includes('[Postgres]') || message.includes('postgres') || message.includes('pg_')) {
     source = 'postgres';
-  } else if (message.includes('[Socket') || message.includes('socket.io')) {
+  } else if (message.includes('[Socket') || message.includes('Socket IO')) {
     source = 'socket';
   } else if (message.includes('email') || message.includes('SMTP') || message.includes('mailer')) {
     source = 'email';
@@ -714,7 +749,7 @@ console.warn = (...args) => {
   let source = 'server';
   if (message.includes('[Postgres]') || message.includes('postgres')) {
     source = 'postgres';
-  } else if (message.includes('[Socket') || message.includes('socket.io')) {
+  } else if (message.includes('[Socket') || message.includes('Socket IO')) {
     source = 'socket';
   }
   addServerLog('warn', source, message.substring(0, 500));
@@ -778,6 +813,11 @@ app.post('/api/send-invite', async (req, res) => {
   }
 
   const compactedLink = compactInviteLink(link);
+  const safeInviteLink = sanitizeEmailLink(compactedLink);
+  const safeName = escapeHtml(name || 'You');
+  const safeTeamName = escapeHtml(teamName || 'a RetroGemini team');
+  const safeSessionName = sessionName ? escapeHtml(sessionName) : '';
+  const safeInviteLinkHtml = escapeHtml(safeInviteLink);
 
   try {
     await mailer.sendMail({
@@ -789,9 +829,9 @@ app.post('/api/send-invite', async (req, res) => {
 You have been invited to join ${teamName || 'a RetroGemini team'}${sessionName ? ` for the session "${sessionName}"` : ''}.
 Use this link to join: ${compactedLink}
 `,
-      html: `<p>${name || 'You'},</p>
-<p>You have been invited to join <strong>${teamName || 'a RetroGemini team'}</strong>${sessionName ? ` for the session "${sessionName}"` : ''}.</p>
-<p><a href="${compactedLink}" target="_blank" rel="noreferrer">Join with this link</a></p>`
+      html: `<p>${safeName},</p>
+<p>You have been invited to join <strong>${safeTeamName}</strong>${safeSessionName ? ` for the session "${safeSessionName}"` : ''}.</p>
+<p><a href="${safeInviteLinkHtml}" target="_blank" rel="noreferrer">Join with this link</a></p>`
     });
 
     res.status(204).end();
@@ -828,6 +868,11 @@ app.post('/api/notify-new-feedback', async (req, res) => {
 
     const typeLabel = feedback.type === 'bug' ? 'Bug Report' : 'Feature Request';
     const typeEmoji = feedback.type === 'bug' ? '🐛' : '✨';
+    const safeFeedbackTitle = escapeHtml(feedback.title);
+    const safeFeedbackTeamName = escapeHtml(feedback.teamName);
+    const safeFeedbackSubmittedBy = escapeHtml(feedback.submittedByName);
+    const safeFeedbackDescription = escapeHtml(feedback.description);
+    const feedbackDate = new Date(feedback.submittedAt).toLocaleString();
 
     await mailer.sendMail({
       from: process.env.FROM_EMAIL || process.env.SMTP_USER,
@@ -839,7 +884,7 @@ Title: ${feedback.title}
 Type: ${typeLabel}
 Team: ${feedback.teamName}
 Submitted by: ${feedback.submittedByName}
-Date: ${new Date(feedback.submittedAt).toLocaleString()}
+Date: ${feedbackDate}
 
 Description:
 ${feedback.description}
@@ -853,16 +898,16 @@ Log in to the Super Admin Dashboard to review and respond to this feedback.
     ${typeEmoji} New ${typeLabel}
   </h2>
   <div style="background: #f8fafc; border-radius: 8px; padding: 16px; margin: 16px 0;">
-    <h3 style="margin: 0 0 8px 0; color: #1e293b;">${feedback.title}</h3>
+    <h3 style="margin: 0 0 8px 0; color: #1e293b;">${safeFeedbackTitle}</h3>
     <p style="margin: 4px 0; color: #64748b; font-size: 14px;">
-      <strong>Team:</strong> ${feedback.teamName}<br>
-      <strong>Submitted by:</strong> ${feedback.submittedByName}<br>
-      <strong>Date:</strong> ${new Date(feedback.submittedAt).toLocaleString()}
+      <strong>Team:</strong> ${safeFeedbackTeamName}<br>
+      <strong>Submitted by:</strong> ${safeFeedbackSubmittedBy}<br>
+      <strong>Date:</strong> ${feedbackDate}
     </p>
   </div>
   <div style="margin: 16px 0;">
     <h4 style="color: #475569; margin-bottom: 8px;">Description:</h4>
-    <p style="color: #334155; white-space: pre-wrap;">${feedback.description}</p>
+    <p style="color: #334155; white-space: pre-wrap;">${safeFeedbackDescription}</p>
   </div>
   ${feedback.images && feedback.images.length > 0 ? `
   <p style="color: #64748b; font-size: 14px;">
@@ -896,6 +941,10 @@ app.post('/api/send-password-reset', async (req, res) => {
     return res.status(400).json({ error: 'missing_fields' });
   }
 
+  const safeTeamName = escapeHtml(teamName);
+  const safeResetLink = sanitizeEmailLink(resetLink);
+  const safeResetLinkHtml = escapeHtml(safeResetLink);
+
   try {
     await mailer.sendMail({
       from: process.env.FROM_EMAIL || process.env.SMTP_USER,
@@ -912,8 +961,8 @@ This link is valid for 1 hour.
 If you did not request this reset, please ignore this email.
 `,
       html: `<p>Hello,</p>
-<p>You have requested a password reset for the team <strong>${teamName}</strong>.</p>
-<p><a href="${resetLink}" target="_blank" rel="noreferrer">Click here to reset your password</a></p>
+<p>You have requested a password reset for the team <strong>${safeTeamName}</strong>.</p>
+<p><a href="${safeResetLinkHtml}" target="_blank" rel="noreferrer">Click here to reset your password</a></p>
 <p>This link is valid for 1 hour.</p>
 <p><em>If you did not request this reset, please ignore this email.</em></p>`
     });
@@ -1287,6 +1336,11 @@ app.post('/api/super-admin/notify-feedback', superAdminActionLimiter, async (req
 
     const typeLabel = feedback.type === 'bug' ? 'Bug Report' : 'Feature Request';
     const typeEmoji = feedback.type === 'bug' ? '🐛' : '✨';
+    const safeFeedbackTitle = escapeHtml(feedback.title);
+    const safeFeedbackTeamName = escapeHtml(feedback.teamName);
+    const safeFeedbackSubmittedBy = escapeHtml(feedback.submittedByName);
+    const safeFeedbackDescription = escapeHtml(feedback.description);
+    const feedbackDate = new Date(feedback.submittedAt).toLocaleString();
 
     await mailer.sendMail({
       from: process.env.FROM_EMAIL || process.env.SMTP_USER,
@@ -1298,7 +1352,7 @@ Title: ${feedback.title}
 Type: ${typeLabel}
 Team: ${feedback.teamName}
 Submitted by: ${feedback.submittedByName}
-Date: ${new Date(feedback.submittedAt).toLocaleString()}
+Date: ${feedbackDate}
 
 Description:
 ${feedback.description}
@@ -1312,16 +1366,16 @@ Log in to the Super Admin Dashboard to review and respond to this feedback.
     ${typeEmoji} New ${typeLabel}
   </h2>
   <div style="background: #f8fafc; border-radius: 8px; padding: 16px; margin: 16px 0;">
-    <h3 style="margin: 0 0 8px 0; color: #1e293b;">${feedback.title}</h3>
+    <h3 style="margin: 0 0 8px 0; color: #1e293b;">${safeFeedbackTitle}</h3>
     <p style="margin: 4px 0; color: #64748b; font-size: 14px;">
-      <strong>Team:</strong> ${feedback.teamName}<br>
-      <strong>Submitted by:</strong> ${feedback.submittedByName}<br>
-      <strong>Date:</strong> ${new Date(feedback.submittedAt).toLocaleString()}
+      <strong>Team:</strong> ${safeFeedbackTeamName}<br>
+      <strong>Submitted by:</strong> ${safeFeedbackSubmittedBy}<br>
+      <strong>Date:</strong> ${feedbackDate}
     </p>
   </div>
   <div style="margin: 16px 0;">
     <h4 style="color: #475569; margin-bottom: 8px;">Description:</h4>
-    <p style="color: #334155; white-space: pre-wrap;">${feedback.description}</p>
+    <p style="color: #334155; white-space: pre-wrap;">${safeFeedbackDescription}</p>
   </div>
   ${feedback.images && feedback.images.length > 0 ? `
   <p style="color: #64748b; font-size: 14px;">
