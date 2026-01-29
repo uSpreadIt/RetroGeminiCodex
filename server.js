@@ -275,6 +275,19 @@ const authLimiter = rateLimit({
   skip: shouldSkipSuperAdminLimit
 });
 
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  message: { error: 'too_many_attempts', retryAfter: '15 minutes' },
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  keyGenerator: (req) => {
+    const teamName = typeof req.body?.teamName === 'string' ? req.body.teamName.toLowerCase() : '';
+    return `${req.ip}:${teamName}`;
+  }
+});
+
 const superAdminActionLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 60,
@@ -849,7 +862,7 @@ const atomicUpdateTeam = async (teamId, updater) => {
 };
 
 // POST /api/team/login - Authenticate and get team data
-app.post('/api/team/login', authLimiter, async (req, res) => {
+app.post('/api/team/login', loginLimiter, async (req, res) => {
   try {
     const { teamName, password } = req.body || {};
 
