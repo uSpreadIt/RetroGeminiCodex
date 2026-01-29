@@ -2022,8 +2022,16 @@ const Dashboard: React.FC<Props> = ({ team, currentUser, onOpenSession, onOpenHe
           currentUserName={currentUser.name}
           feedbacks={team.teamFeedbacks || []}
           onSubmitFeedback={(feedback) => {
-            dataService.createTeamFeedback(team.id, feedback);
+            const createdFeedback = dataService.createTeamFeedback(team.id, feedback);
             onRefresh();
+            // Send notification email to admin (fire-and-forget)
+            fetch('/api/notify-new-feedback', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ feedback: createdFeedback })
+            }).catch(() => {
+              // Silently ignore notification failures - feedback was already saved
+            });
           }}
           onDeleteFeedback={(feedbackId) => {
             dataService.deleteTeamFeedback(team.id, feedbackId);

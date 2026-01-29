@@ -666,6 +666,60 @@ const initDatabase = async () => {
 // Will be populated after database init
 let persistedData = normalizePersistedData({ teams: [] });
 
+// ==================== SERVER LOGS STORAGE ====================
+// In-memory circular buffer for server logs (keeps last 500 entries)
+const MAX_LOG_ENTRIES = 500;
+const serverLogs = [];
+let logIdCounter = 0;
+
+const addServerLog = (level, source, message, details = null) => {
+  const entry = {
+    id: String(++logIdCounter),
+    timestamp: new Date().toISOString(),
+    level,
+    source,
+    message,
+    details: details || undefined
+  };
+  serverLogs.push(entry);
+  // Keep only last MAX_LOG_ENTRIES
+  if (serverLogs.length > MAX_LOG_ENTRIES) {
+    serverLogs.shift();
+  }
+  return entry;
+};
+
+// Override console methods to capture logs
+const originalConsoleError = console.error;
+const originalConsoleWarn = console.warn;
+
+console.error = (...args) => {
+  originalConsoleError.apply(console, args);
+  const message = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
+  // Determine source from message
+  let source = 'server';
+  if (message.includes('[Postgres]') || message.includes('postgres') || message.includes('pg_')) {
+    source = 'postgres';
+  } else if (message.includes('[Socket') || message.includes('socket.io')) {
+    source = 'socket';
+  } else if (message.includes('email') || message.includes('SMTP') || message.includes('mailer')) {
+    source = 'email';
+  }
+  addServerLog('error', source, message.substring(0, 500));
+};
+
+console.warn = (...args) => {
+  originalConsoleWarn.apply(console, args);
+  const message = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
+  let source = 'server';
+  if (message.includes('[Postgres]') || message.includes('postgres')) {
+    source = 'postgres';
+  } else if (message.includes('[Socket') || message.includes('socket.io')) {
+    source = 'socket';
+  }
+  addServerLog('warn', source, message.substring(0, 500));
+};
+
 const smtpEnabled = !!process.env.SMTP_HOST;
 const mailer = smtpEnabled
   ? nodemailer.createTransport({
@@ -744,6 +798,91 @@ Use this link to join: ${compactedLink}
   } catch (err) {
     console.error('[Server] Failed to send invite email', err);
     res.status(500).json({ error: 'send_failed' });
+  }
+});
+
+// Public endpoint to send feedback notification email to admin (called when feedback is submitted)
+app.post('/api/notify-new-feedback', async (req, res) => {
+  // This endpoint doesn't require authentication - it just sends a notification
+  // if admin email is configured
+
+  if (!smtpEnabled || !mailer) {
+    // Silently succeed if email not configured - this is expected in many deployments
+    return res.status(204).end();
+  }
+
+  const { feedback } = req.body || {};
+
+  try {
+    const settings = await loadGlobalSettings();
+    const adminEmail = settings.adminEmail;
+
+    if (!adminEmail) {
+      // No admin email configured - silently succeed
+      return res.status(204).end();
+    }
+
+    if (!feedback || !feedback.title || !feedback.type) {
+      return res.status(400).json({ error: 'missing_feedback_data' });
+    }
+
+    const typeLabel = feedback.type === 'bug' ? 'Bug Report' : 'Feature Request';
+    const typeEmoji = feedback.type === 'bug' ? '🐛' : '✨';
+
+    await mailer.sendMail({
+      from: process.env.FROM_EMAIL || process.env.SMTP_USER,
+      to: adminEmail,
+      subject: `${typeEmoji} New ${typeLabel}: ${feedback.title}`,
+      text: `New ${typeLabel} submitted
+
+Title: ${feedback.title}
+Type: ${typeLabel}
+Team: ${feedback.teamName}
+Submitted by: ${feedback.submittedByName}
+Date: ${new Date(feedback.submittedAt).toLocaleString()}
+
+Description:
+${feedback.description}
+
+---
+Log in to the Super Admin Dashboard to review and respond to this feedback.
+`,
+      html: `
+<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  <h2 style="color: ${feedback.type === 'bug' ? '#dc2626' : '#7c3aed'};">
+    ${typeEmoji} New ${typeLabel}
+  </h2>
+  <div style="background: #f8fafc; border-radius: 8px; padding: 16px; margin: 16px 0;">
+    <h3 style="margin: 0 0 8px 0; color: #1e293b;">${feedback.title}</h3>
+    <p style="margin: 4px 0; color: #64748b; font-size: 14px;">
+      <strong>Team:</strong> ${feedback.teamName}<br>
+      <strong>Submitted by:</strong> ${feedback.submittedByName}<br>
+      <strong>Date:</strong> ${new Date(feedback.submittedAt).toLocaleString()}
+    </p>
+  </div>
+  <div style="margin: 16px 0;">
+    <h4 style="color: #475569; margin-bottom: 8px;">Description:</h4>
+    <p style="color: #334155; white-space: pre-wrap;">${feedback.description}</p>
+  </div>
+  ${feedback.images && feedback.images.length > 0 ? `
+  <p style="color: #64748b; font-size: 14px;">
+    <em>${feedback.images.length} image(s) attached - view in Super Admin Dashboard</em>
+  </p>
+  ` : ''}
+  <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;">
+  <p style="color: #94a3b8; font-size: 12px;">
+    Log in to the Super Admin Dashboard to review and respond to this feedback.
+  </p>
+</div>
+`
+    });
+
+    addServerLog('info', 'email', `Feedback notification sent to ${adminEmail} for: ${feedback.title}`);
+    res.status(204).end();
+  } catch (err) {
+    console.error('[Server] Failed to send feedback notification email', err);
+    // Don't fail the request if email fails - feedback was already saved
+    res.status(204).end();
   }
 });
 
@@ -1084,6 +1223,240 @@ app.post('/api/super-admin/info-message', superAdminActionLimiter, async (req, r
     console.error('[Server] Failed to update info message', err);
     res.status(500).json({ error: 'failed_to_save' });
   }
+});
+
+// Super admin endpoint to get admin email
+app.post('/api/super-admin/admin-email', superAdminActionLimiter, async (req, res) => {
+  const { password } = req.body || {};
+
+  if (!SUPER_ADMIN_PASSWORD || !secureCompare(password, SUPER_ADMIN_PASSWORD)) {
+    return res.status(401).json({ error: 'unauthorized' });
+  }
+
+  try {
+    const settings = await loadGlobalSettings();
+    res.json({ adminEmail: settings.adminEmail || '' });
+  } catch (err) {
+    console.error('[Server] Failed to load admin email', err);
+    res.status(500).json({ error: 'failed_to_load' });
+  }
+});
+
+// Super admin endpoint to update admin email
+app.post('/api/super-admin/update-admin-email', superAdminActionLimiter, async (req, res) => {
+  const { password, adminEmail } = req.body || {};
+
+  if (!SUPER_ADMIN_PASSWORD || !secureCompare(password, SUPER_ADMIN_PASSWORD)) {
+    return res.status(401).json({ error: 'unauthorized' });
+  }
+
+  try {
+    const settings = await loadGlobalSettings();
+    settings.adminEmail = adminEmail || '';
+    await saveGlobalSettings(settings);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[Server] Failed to update admin email', err);
+    res.status(500).json({ error: 'failed_to_save' });
+  }
+});
+
+// Endpoint to send feedback notification email to admin
+app.post('/api/super-admin/notify-feedback', superAdminActionLimiter, async (req, res) => {
+  const { password, feedback } = req.body || {};
+
+  if (!SUPER_ADMIN_PASSWORD || !secureCompare(password, SUPER_ADMIN_PASSWORD)) {
+    return res.status(401).json({ error: 'unauthorized' });
+  }
+
+  if (!smtpEnabled || !mailer) {
+    return res.status(501).json({ error: 'email_not_configured' });
+  }
+
+  try {
+    const settings = await loadGlobalSettings();
+    const adminEmail = settings.adminEmail;
+
+    if (!adminEmail) {
+      return res.status(400).json({ error: 'admin_email_not_configured' });
+    }
+
+    if (!feedback || !feedback.title || !feedback.type) {
+      return res.status(400).json({ error: 'missing_feedback_data' });
+    }
+
+    const typeLabel = feedback.type === 'bug' ? 'Bug Report' : 'Feature Request';
+    const typeEmoji = feedback.type === 'bug' ? '🐛' : '✨';
+
+    await mailer.sendMail({
+      from: process.env.FROM_EMAIL || process.env.SMTP_USER,
+      to: adminEmail,
+      subject: `${typeEmoji} New ${typeLabel}: ${feedback.title}`,
+      text: `New ${typeLabel} submitted
+
+Title: ${feedback.title}
+Type: ${typeLabel}
+Team: ${feedback.teamName}
+Submitted by: ${feedback.submittedByName}
+Date: ${new Date(feedback.submittedAt).toLocaleString()}
+
+Description:
+${feedback.description}
+
+---
+Log in to the Super Admin Dashboard to review and respond to this feedback.
+`,
+      html: `
+<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  <h2 style="color: ${feedback.type === 'bug' ? '#dc2626' : '#7c3aed'};">
+    ${typeEmoji} New ${typeLabel}
+  </h2>
+  <div style="background: #f8fafc; border-radius: 8px; padding: 16px; margin: 16px 0;">
+    <h3 style="margin: 0 0 8px 0; color: #1e293b;">${feedback.title}</h3>
+    <p style="margin: 4px 0; color: #64748b; font-size: 14px;">
+      <strong>Team:</strong> ${feedback.teamName}<br>
+      <strong>Submitted by:</strong> ${feedback.submittedByName}<br>
+      <strong>Date:</strong> ${new Date(feedback.submittedAt).toLocaleString()}
+    </p>
+  </div>
+  <div style="margin: 16px 0;">
+    <h4 style="color: #475569; margin-bottom: 8px;">Description:</h4>
+    <p style="color: #334155; white-space: pre-wrap;">${feedback.description}</p>
+  </div>
+  ${feedback.images && feedback.images.length > 0 ? `
+  <p style="color: #64748b; font-size: 14px;">
+    <em>${feedback.images.length} image(s) attached - view in Super Admin Dashboard</em>
+  </p>
+  ` : ''}
+  <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;">
+  <p style="color: #94a3b8; font-size: 12px;">
+    Log in to the Super Admin Dashboard to review and respond to this feedback.
+  </p>
+</div>
+`
+    });
+
+    addServerLog('info', 'email', `Feedback notification sent to ${adminEmail} for: ${feedback.title}`);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[Server] Failed to send feedback notification email', err);
+    res.status(500).json({ error: 'send_failed' });
+  }
+});
+
+// Super admin endpoint to get active sessions (live monitoring)
+app.post('/api/super-admin/active-sessions', superAdminActionLimiter, async (req, res) => {
+  const { password } = req.body || {};
+
+  if (!SUPER_ADMIN_PASSWORD || !secureCompare(password, SUPER_ADMIN_PASSWORD)) {
+    return res.status(401).json({ error: 'unauthorized' });
+  }
+
+  try {
+    const activeSessions = [];
+
+    // Get all rooms (session IDs) with connected clients
+    const rooms = io.sockets.adapter.rooms;
+
+    for (const [roomId, socketIds] of rooms.entries()) {
+      // Skip socket.io internal rooms (they start with socket id)
+      if (socketIds.has(roomId)) continue;
+
+      // Get participants in this room
+      const participants = [];
+      for (const socketId of socketIds) {
+        const socket = io.sockets.sockets.get(socketId);
+        if (socket && socket.data.userId && socket.data.userName) {
+          participants.push({
+            id: socket.data.userId,
+            name: socket.data.userName
+          });
+        }
+      }
+
+      // Skip empty rooms
+      if (participants.length === 0) continue;
+
+      // Try to get session data from cache or database
+      let sessionData = sessions.get(roomId);
+      if (!sessionData) {
+        sessionData = await loadSessionState(roomId);
+      }
+
+      // Determine session type and details
+      const isHealthCheck = sessionData && (sessionData.templateId || sessionData.dimensions);
+      let teamName = 'Unknown';
+
+      // Try to get team name from persisted data
+      if (sessionData?.teamId && persistedData.teams) {
+        const team = persistedData.teams.find(t => t.id === sessionData.teamId);
+        if (team) {
+          teamName = team.name;
+        }
+      }
+
+      const sessionInfo = {
+        sessionId: roomId,
+        type: isHealthCheck ? 'healthcheck' : 'retrospective',
+        teamId: sessionData?.teamId || '',
+        teamName,
+        sessionName: sessionData?.name || 'Unknown Session',
+        phase: sessionData?.phase || 'Unknown',
+        status: sessionData?.status || 'IN_PROGRESS',
+        participants,
+        connectedCount: socketIds.size
+      };
+
+      activeSessions.push(sessionInfo);
+    }
+
+    res.json({ sessions: activeSessions });
+  } catch (err) {
+    console.error('[Server] Failed to get active sessions', err);
+    res.status(500).json({ error: 'failed_to_load' });
+  }
+});
+
+// Super admin endpoint to get server logs
+app.post('/api/super-admin/logs', superAdminActionLimiter, async (req, res) => {
+  const { password, filter } = req.body || {};
+
+  if (!SUPER_ADMIN_PASSWORD || !secureCompare(password, SUPER_ADMIN_PASSWORD)) {
+    return res.status(401).json({ error: 'unauthorized' });
+  }
+
+  try {
+    let logs = [...serverLogs];
+
+    // Apply filters if specified
+    if (filter) {
+      if (filter.level) {
+        logs = logs.filter(l => l.level === filter.level);
+      }
+      if (filter.source) {
+        logs = logs.filter(l => l.source === filter.source);
+      }
+    }
+
+    // Return logs in reverse order (newest first)
+    res.json({ logs: logs.reverse() });
+  } catch (err) {
+    console.error('[Server] Failed to get server logs', err);
+    res.status(500).json({ error: 'failed_to_load' });
+  }
+});
+
+// Super admin endpoint to clear server logs
+app.post('/api/super-admin/clear-logs', superAdminActionLimiter, async (req, res) => {
+  const { password } = req.body || {};
+
+  if (!SUPER_ADMIN_PASSWORD || !secureCompare(password, SUPER_ADMIN_PASSWORD)) {
+    return res.status(401).json({ error: 'unauthorized' });
+  }
+
+  serverLogs.length = 0;
+  addServerLog('info', 'server', 'Server logs cleared by admin');
+  res.json({ success: true });
 });
 
 // Serve static files from dist folder

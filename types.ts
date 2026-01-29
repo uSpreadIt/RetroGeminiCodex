@@ -206,5 +206,40 @@ export interface AppVersion {
 
 export interface GlobalSettings {
   infoMessage?: string; // Global info message displayed on team selection and dashboard
+  adminEmail?: string; // Email address for admin notifications (feedback alerts)
+}
+
+// ==================== ACTIVE SESSIONS (LIVE MONITORING) ====================
+
+export interface ActiveSessionMember {
+  id: string;
+  name: string;
+}
+
+export interface ActiveSession {
+  sessionId: string;
+  type: 'retrospective' | 'healthcheck';
+  teamId: string;
+  teamName: string;
+  sessionName: string;
+  phase: string;
+  status: 'IN_PROGRESS' | 'CLOSED';
+  participants: ActiveSessionMember[];
+  connectedCount: number;
+  startedAt?: string;
+}
+
+// ==================== SERVER LOGS ====================
+
+export type LogLevel = 'error' | 'warn' | 'info';
+export type LogSource = 'postgres' | 'server' | 'socket' | 'email';
+
+export interface ServerLogEntry {
+  id: string;
+  timestamp: string;
+  level: LogLevel;
+  source: LogSource;
+  message: string;
+  details?: string;
 }
 

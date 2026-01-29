@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Team, TeamFeedback } from '../types';
+import React, { useState, useEffect, useRef } from 'react';
+import { Team, TeamFeedback, ActiveSession, ServerLogEntry } from '../types';
 import { dataService } from '../services/dataService';
 
 interface Props {
@@ -7,8 +7,10 @@ interface Props {
   onExit: () => void;
 }
 
+type TabType = 'TEAMS' | 'FEEDBACKS' | 'LIVE' | 'LOGS';
+
 const SuperAdmin: React.FC<Props> = ({ superAdminPassword, onExit }) => {
-  const [tab, setTab] = useState<'TEAMS' | 'FEEDBACKS'>('TEAMS');
+  const [tab, setTab] = useState<TabType>('TEAMS');
   const [teams, setTeams] = useState<Team[]>([]);
   const [feedbacks, setFeedbacks] = useState<TeamFeedback[]>([]);
   const [loading, setLoading] = useState(true);
@@ -28,6 +30,20 @@ const SuperAdmin: React.FC<Props> = ({ superAdminPassword, onExit }) => {
   const [infoMessage, setInfoMessage] = useState('');
   const [infoMessageSaving, setInfoMessageSaving] = useState(false);
 
+  // Admin email notification settings
+  const [adminEmail, setAdminEmail] = useState('');
+  const [adminEmailSaving, setAdminEmailSaving] = useState(false);
+
+  // Live sessions monitoring
+  const [activeSessions, setActiveSessions] = useState<ActiveSession[]>([]);
+  const [liveLoading, setLiveLoading] = useState(false);
+  const liveIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Server logs
+  const [serverLogs, setServerLogs] = useState<ServerLogEntry[]>([]);
+  const [logsLoading, setLogsLoading] = useState(false);
+  const [logFilter, setLogFilter] = useState<{ level?: string; source?: string }>({});
+
   const getRateLimitMessage = async (response: Response) => {
     if (response.status !== 429) return null;
     const data = await response.json().catch(() => null);
@@ -39,7 +55,33 @@ const SuperAdmin: React.FC<Props> = ({ superAdminPassword, onExit }) => {
     loadTeams();
     loadFeedbacks();
     loadInfoMessage();
+    loadAdminEmail();
   }, []);
+
+  // Handle tab changes for live refresh
+  useEffect(() => {
+    if (tab === 'LIVE') {
+      loadActiveSessions();
+      // Set up polling for live sessions (every 5 seconds)
+      liveIntervalRef.current = setInterval(loadActiveSessions, 5000);
+    } else {
+      // Clear interval when leaving LIVE tab
+      if (liveIntervalRef.current) {
+        clearInterval(liveIntervalRef.current);
+        liveIntervalRef.current = null;
+      }
+    }
+
+    if (tab === 'LOGS') {
+      loadServerLogs();
+    }
+
+    return () => {
+      if (liveIntervalRef.current) {
+        clearInterval(liveIntervalRef.current);
+      }
+    };
+  }, [tab]);
 
   const loadInfoMessage = async () => {
     try {
@@ -82,6 +124,117 @@ const SuperAdmin: React.FC<Props> = ({ superAdminPassword, onExit }) => {
       setError(err.message || 'Failed to save info message');
     } finally {
       setInfoMessageSaving(false);
+    }
+  };
+
+  const loadAdminEmail = async () => {
+    try {
+      const response = await fetch('/api/super-admin/admin-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: superAdminPassword })
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setAdminEmail(data.adminEmail || '');
+      }
+    } catch (err) {
+      console.error('Failed to load admin email', err);
+    }
+  };
+
+  const handleSaveAdminEmail = async () => {
+    setError('');
+    setSuccessMessage('');
+    setAdminEmailSaving(true);
+
+    try {
+      const response = await fetch('/api/super-admin/update-admin-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: superAdminPassword, adminEmail })
+      });
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Super admin session expired. Please log in again.');
+        }
+        const rateLimitMessage = await getRateLimitMessage(response);
+        if (rateLimitMessage) {
+          throw new Error(rateLimitMessage);
+        }
+        throw new Error('Failed to save admin email');
+      }
+
+      setSuccessMessage('Admin email updated successfully');
+      setTimeout(() => setSuccessMessage(''), 3000);
+    } catch (err: any) {
+      setError(err.message || 'Failed to save admin email');
+    } finally {
+      setAdminEmailSaving(false);
+    }
+  };
+
+  const loadActiveSessions = async () => {
+    if (liveLoading) return;
+    setLiveLoading(true);
+
+    try {
+      const response = await fetch('/api/super-admin/active-sessions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: superAdminPassword })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setActiveSessions(data.sessions || []);
+      }
+    } catch (err) {
+      console.error('Failed to load active sessions', err);
+    } finally {
+      setLiveLoading(false);
+    }
+  };
+
+  const loadServerLogs = async () => {
+    setLogsLoading(true);
+
+    try {
+      const response = await fetch('/api/super-admin/logs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: superAdminPassword, filter: logFilter })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setServerLogs(data.logs || []);
+      }
+    } catch (err) {
+      console.error('Failed to load server logs', err);
+    } finally {
+      setLogsLoading(false);
+    }
+  };
+
+  const handleClearLogs = async () => {
+    if (!confirm('Are you sure you want to clear all server logs?')) return;
+
+    try {
+      const response = await fetch('/api/super-admin/clear-logs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: superAdminPassword })
+      });
+
+      if (response.ok) {
+        setServerLogs([]);
+        setSuccessMessage('Server logs cleared');
+        setTimeout(() => setSuccessMessage(''), 3000);
+      }
+    } catch (err) {
+      console.error('Failed to clear logs', err);
     }
   };
 
@@ -539,6 +692,53 @@ const SuperAdmin: React.FC<Props> = ({ superAdminPassword, onExit }) => {
           </div>
         </div>
 
+        {/* Admin Email Notification Configuration */}
+        <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
+          <div className="flex flex-col gap-4">
+            <div>
+              <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                <span className="material-symbols-outlined text-green-600">mail</span>
+                Feedback Notifications
+              </h2>
+              <p className="text-sm text-slate-500 mt-1">
+                Configure email notifications when users submit feedback (bug reports or feature requests).
+                Requires SMTP to be configured on the server.
+              </p>
+            </div>
+            <div className="flex flex-col gap-3">
+              <div className="flex flex-col gap-2">
+                <label className="text-sm font-medium text-slate-700">Admin Email Address</label>
+                <input
+                  type="email"
+                  value={adminEmail}
+                  onChange={(e) => setAdminEmail(e.target.value)}
+                  placeholder="admin@example.com"
+                  className="w-full md:w-96 border border-slate-300 rounded-lg px-4 py-2 text-sm focus:border-green-500 focus:ring-1 focus:ring-green-500 outline-none"
+                />
+                <p className="text-xs text-slate-400">
+                  Leave empty to disable email notifications for new feedback.
+                </p>
+              </div>
+              <div className="flex justify-end">
+                <button
+                  onClick={handleSaveAdminEmail}
+                  disabled={adminEmailSaving}
+                  className={`px-4 py-2 rounded-lg font-semibold flex items-center justify-center gap-2 ${
+                    adminEmailSaving
+                      ? 'bg-slate-200 text-slate-500 cursor-not-allowed'
+                      : 'bg-green-600 text-white hover:bg-green-700'
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-base">
+                    {adminEmailSaving ? 'sync' : 'save'}
+                  </span>
+                  {adminEmailSaving ? 'Saving...' : 'Save Email'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div className="bg-white rounded-xl shadow-lg p-6 mb-6 space-y-6">
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div>
@@ -613,7 +813,7 @@ const SuperAdmin: React.FC<Props> = ({ superAdminPassword, onExit }) => {
         </div>
 
         {/* Tabs */}
-        <div className="flex border-b border-slate-200 mb-6">
+        <div className="flex border-b border-slate-200 mb-6 flex-wrap">
           <button
             onClick={() => setTab('TEAMS')}
             className={`px-6 py-3 font-bold text-sm flex items-center transition ${
@@ -638,6 +838,38 @@ const SuperAdmin: React.FC<Props> = ({ superAdminPassword, onExit }) => {
             {unreadCount > 0 && (
               <span className="ml-2 bg-red-500 text-white text-xs rounded-full px-2 py-0.5">
                 {unreadCount}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => setTab('LIVE')}
+            className={`px-6 py-3 font-bold text-sm flex items-center transition ${
+              tab === 'LIVE'
+                ? 'border-b-2 border-green-600 text-green-600'
+                : 'text-slate-500 hover:text-green-600'
+            }`}
+          >
+            <span className="material-symbols-outlined mr-2">stream</span>
+            Live Sessions
+            {activeSessions.length > 0 && (
+              <span className="ml-2 bg-green-500 text-white text-xs rounded-full px-2 py-0.5 animate-pulse">
+                {activeSessions.length}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => setTab('LOGS')}
+            className={`px-6 py-3 font-bold text-sm flex items-center transition ${
+              tab === 'LOGS'
+                ? 'border-b-2 border-orange-600 text-orange-600'
+                : 'text-slate-500 hover:text-orange-600'
+            }`}
+          >
+            <span className="material-symbols-outlined mr-2">terminal</span>
+            Server Logs
+            {serverLogs.filter(l => l.level === 'error').length > 0 && (
+              <span className="ml-2 bg-red-500 text-white text-xs rounded-full px-2 py-0.5">
+                {serverLogs.filter(l => l.level === 'error').length}
               </span>
             )}
           </button>
@@ -953,6 +1185,251 @@ const SuperAdmin: React.FC<Props> = ({ superAdminPassword, onExit }) => {
                 ))
               )}
             </div>
+          </div>
+        )}
+
+        {/* Live Sessions Tab */}
+        {tab === 'LIVE' && (
+          <div>
+            <div className="flex justify-between items-center mb-4">
+              <div className="flex items-center gap-3">
+                <h2 className="text-lg font-bold text-slate-700">Active Sessions</h2>
+                {liveLoading && (
+                  <span className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-green-600"></span>
+                )}
+              </div>
+              <button
+                onClick={loadActiveSessions}
+                className="px-3 py-1.5 bg-green-100 text-green-700 rounded text-sm font-medium hover:bg-green-200 flex items-center gap-1"
+              >
+                <span className="material-symbols-outlined text-base">refresh</span>
+                Refresh
+              </button>
+            </div>
+
+            {activeSessions.length === 0 ? (
+              <div className="bg-white rounded-xl shadow p-12 text-center">
+                <span className="material-symbols-outlined text-6xl mb-4 text-slate-300">cloud_off</span>
+                <p className="text-slate-500 text-lg">No active sessions</p>
+                <p className="text-slate-400 text-sm mt-2">
+                  Sessions will appear here when users join a retrospective or health check.
+                </p>
+                <div className="mt-6 p-4 bg-green-50 rounded-lg text-sm text-green-700">
+                  <span className="material-symbols-outlined text-base align-middle mr-1">check_circle</span>
+                  Safe to deploy - no active sessions
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 flex items-start gap-3">
+                  <span className="material-symbols-outlined text-amber-600 mt-0.5">warning</span>
+                  <div>
+                    <p className="text-amber-800 font-medium">Active sessions detected</p>
+                    <p className="text-amber-700 text-sm mt-1">
+                      {activeSessions.length} session(s) with {activeSessions.reduce((sum, s) => sum + s.connectedCount, 0)} connected user(s).
+                      Consider waiting before deploying to avoid interrupting these sessions.
+                    </p>
+                  </div>
+                </div>
+
+                {activeSessions.map((session) => (
+                  <div key={session.sessionId} className="bg-white rounded-xl shadow-md p-6">
+                    <div className="flex justify-between items-start mb-4">
+                      <div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className={`material-symbols-outlined text-lg ${
+                            session.type === 'healthcheck' ? 'text-emerald-600' : 'text-indigo-600'
+                          }`}>
+                            {session.type === 'healthcheck' ? 'health_and_safety' : 'psychology'}
+                          </span>
+                          <span className={`text-xs font-bold uppercase px-2 py-0.5 rounded ${
+                            session.type === 'healthcheck'
+                              ? 'bg-emerald-100 text-emerald-700'
+                              : 'bg-indigo-100 text-indigo-700'
+                          }`}>
+                            {session.type === 'healthcheck' ? 'Health Check' : 'Retrospective'}
+                          </span>
+                          <span className="flex items-center gap-1 text-green-600">
+                            <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+                            <span className="text-xs font-medium">LIVE</span>
+                          </span>
+                        </div>
+                        <h3 className="text-lg font-bold text-slate-800">{session.sessionName}</h3>
+                        <p className="text-sm text-slate-500">Team: {session.teamName}</p>
+                      </div>
+                      <div className="text-right">
+                        <div className="bg-slate-100 rounded-lg px-3 py-2">
+                          <p className="text-2xl font-bold text-slate-800">{session.connectedCount}</p>
+                          <p className="text-xs text-slate-500">Connected</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-4 mb-4">
+                      <div className="flex items-center gap-2">
+                        <span className="material-symbols-outlined text-sm text-slate-400">flag</span>
+                        <span className="text-sm text-slate-600">Phase: <span className="font-medium">{session.phase}</span></span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="material-symbols-outlined text-sm text-slate-400">schedule</span>
+                        <span className="text-sm text-slate-600">Status: <span className="font-medium">{session.status}</span></span>
+                      </div>
+                    </div>
+
+                    <div className="border-t border-slate-100 pt-4">
+                      <p className="text-xs text-slate-500 mb-2">Connected Participants:</p>
+                      <div className="flex flex-wrap gap-2">
+                        {session.participants.map((p) => (
+                          <span
+                            key={p.id}
+                            className="inline-flex items-center gap-1 px-2 py-1 bg-slate-100 rounded-full text-sm text-slate-700"
+                          >
+                            <span className="material-symbols-outlined text-sm">person</span>
+                            {p.name}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Server Logs Tab */}
+        {tab === 'LOGS' && (
+          <div>
+            <div className="flex justify-between items-center mb-4">
+              <div className="flex items-center gap-3">
+                <h2 className="text-lg font-bold text-slate-700">Server Logs</h2>
+                {logsLoading && (
+                  <span className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-orange-600"></span>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={loadServerLogs}
+                  className="px-3 py-1.5 bg-orange-100 text-orange-700 rounded text-sm font-medium hover:bg-orange-200 flex items-center gap-1"
+                >
+                  <span className="material-symbols-outlined text-base">refresh</span>
+                  Refresh
+                </button>
+                <button
+                  onClick={handleClearLogs}
+                  className="px-3 py-1.5 bg-red-100 text-red-700 rounded text-sm font-medium hover:bg-red-200 flex items-center gap-1"
+                >
+                  <span className="material-symbols-outlined text-base">delete</span>
+                  Clear Logs
+                </button>
+              </div>
+            </div>
+
+            {/* Log Filters */}
+            <div className="bg-white rounded-lg shadow p-4 mb-4 flex flex-wrap gap-4">
+              <div className="flex items-center gap-2">
+                <label className="text-sm font-medium text-slate-600">Level:</label>
+                <select
+                  value={logFilter.level || ''}
+                  onChange={(e) => {
+                    setLogFilter({ ...logFilter, level: e.target.value || undefined });
+                    setTimeout(loadServerLogs, 100);
+                  }}
+                  className="border border-slate-300 rounded px-2 py-1 text-sm"
+                >
+                  <option value="">All Levels</option>
+                  <option value="error">Errors</option>
+                  <option value="warn">Warnings</option>
+                  <option value="info">Info</option>
+                </select>
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-sm font-medium text-slate-600">Source:</label>
+                <select
+                  value={logFilter.source || ''}
+                  onChange={(e) => {
+                    setLogFilter({ ...logFilter, source: e.target.value || undefined });
+                    setTimeout(loadServerLogs, 100);
+                  }}
+                  className="border border-slate-300 rounded px-2 py-1 text-sm"
+                >
+                  <option value="">All Sources</option>
+                  <option value="postgres">PostgreSQL</option>
+                  <option value="server">Server</option>
+                  <option value="socket">Socket.IO</option>
+                  <option value="email">Email</option>
+                </select>
+              </div>
+              <div className="text-sm text-slate-500 ml-auto">
+                {serverLogs.length} log entries
+              </div>
+            </div>
+
+            {serverLogs.length === 0 ? (
+              <div className="bg-white rounded-xl shadow p-12 text-center">
+                <span className="material-symbols-outlined text-6xl mb-4 text-slate-300">article</span>
+                <p className="text-slate-500 text-lg">No logs to display</p>
+                <p className="text-slate-400 text-sm mt-2">
+                  Server errors and warnings will appear here when they occur.
+                </p>
+              </div>
+            ) : (
+              <div className="bg-white rounded-xl shadow overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-slate-50 border-b border-slate-200">
+                      <tr>
+                        <th className="text-left p-3 font-semibold text-slate-600 w-40">Timestamp</th>
+                        <th className="text-left p-3 font-semibold text-slate-600 w-20">Level</th>
+                        <th className="text-left p-3 font-semibold text-slate-600 w-24">Source</th>
+                        <th className="text-left p-3 font-semibold text-slate-600">Message</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {serverLogs.map((log) => (
+                        <tr
+                          key={log.id}
+                          className={`border-b border-slate-100 hover:bg-slate-50 ${
+                            log.level === 'error' ? 'bg-red-50' : log.level === 'warn' ? 'bg-amber-50' : ''
+                          }`}
+                        >
+                          <td className="p-3 text-slate-500 font-mono text-xs whitespace-nowrap">
+                            {new Date(log.timestamp).toLocaleString()}
+                          </td>
+                          <td className="p-3">
+                            <span className={`px-2 py-0.5 rounded text-xs font-bold uppercase ${
+                              log.level === 'error'
+                                ? 'bg-red-100 text-red-700'
+                                : log.level === 'warn'
+                                ? 'bg-amber-100 text-amber-700'
+                                : 'bg-blue-100 text-blue-700'
+                            }`}>
+                              {log.level}
+                            </span>
+                          </td>
+                          <td className="p-3">
+                            <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                              log.source === 'postgres'
+                                ? 'bg-indigo-100 text-indigo-700'
+                                : log.source === 'socket'
+                                ? 'bg-purple-100 text-purple-700'
+                                : log.source === 'email'
+                                ? 'bg-green-100 text-green-700'
+                                : 'bg-slate-100 text-slate-700'
+                            }`}>
+                              {log.source}
+                            </span>
+                          </td>
+                          <td className="p-3 text-slate-700 font-mono text-xs break-all">
+                            {log.message}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
