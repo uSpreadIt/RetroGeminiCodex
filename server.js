@@ -284,6 +284,22 @@ const superAdminActionLimiter = rateLimit({
   skip: shouldSkipSuperAdminLimit
 });
 
+const teamReadLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 120,
+  message: { error: 'too_many_requests', retryAfter: '1 minute' },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+const teamWriteLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 60,
+  message: { error: 'too_many_requests', retryAfter: '1 minute' },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
 // ==================== DATABASE ABSTRACTION ====================
 // Supports PostgreSQL (multi-pod) and SQLite (single-pod/dev)
 // PostgreSQL config: DATABASE_URL or individual POSTGRES_* variables
@@ -833,7 +849,7 @@ const atomicUpdateTeam = async (teamId, updater) => {
 };
 
 // POST /api/team/login - Authenticate and get team data
-app.post('/api/team/login', async (req, res) => {
+app.post('/api/team/login', authLimiter, async (req, res) => {
   try {
     const { teamName, password } = req.body || {};
 
@@ -868,7 +884,7 @@ app.post('/api/team/login', async (req, res) => {
 });
 
 // POST /api/team/create - Create a new team
-app.post('/api/team/create', async (req, res) => {
+app.post('/api/team/create', authLimiter, async (req, res) => {
   try {
     const { name, password, facilitatorEmail } = req.body || {};
 
@@ -932,7 +948,7 @@ app.post('/api/team/create', async (req, res) => {
 });
 
 // POST /api/team/:teamId - Get team data (with auth in body for security)
-app.post('/api/team/:teamId', async (req, res) => {
+app.post('/api/team/:teamId', teamReadLimiter, async (req, res) => {
   try {
     const { teamId } = req.params;
     const { password } = req.body || {};
@@ -955,7 +971,7 @@ app.post('/api/team/:teamId', async (req, res) => {
 });
 
 // POST /api/team/:teamId/update - Update team data (partial update)
-app.post('/api/team/:teamId/update', async (req, res) => {
+app.post('/api/team/:teamId/update', teamWriteLimiter, async (req, res) => {
   try {
     const { teamId } = req.params;
     const { password, updates } = req.body || {};
@@ -997,7 +1013,7 @@ app.post('/api/team/:teamId/update', async (req, res) => {
 });
 
 // POST /api/team/:teamId/retrospective/:retroId - Update a specific retrospective
-app.post('/api/team/:teamId/retrospective/:retroId', async (req, res) => {
+app.post('/api/team/:teamId/retrospective/:retroId', teamWriteLimiter, async (req, res) => {
   try {
     const { teamId, retroId } = req.params;
     const { password, retrospective } = req.body || {};
@@ -1038,7 +1054,7 @@ app.post('/api/team/:teamId/retrospective/:retroId', async (req, res) => {
 });
 
 // POST /api/team/:teamId/healthcheck/:hcId - Update a specific health check
-app.post('/api/team/:teamId/healthcheck/:hcId', async (req, res) => {
+app.post('/api/team/:teamId/healthcheck/:hcId', teamWriteLimiter, async (req, res) => {
   try {
     const { teamId, hcId } = req.params;
     const { password, healthCheck } = req.body || {};
@@ -1079,7 +1095,7 @@ app.post('/api/team/:teamId/healthcheck/:hcId', async (req, res) => {
 });
 
 // POST /api/team/:teamId/action - Update or create an action
-app.post('/api/team/:teamId/action', async (req, res) => {
+app.post('/api/team/:teamId/action', teamWriteLimiter, async (req, res) => {
   try {
     const { teamId } = req.params;
     const { password, action, retroId } = req.body || {};
@@ -1134,7 +1150,7 @@ app.post('/api/team/:teamId/action', async (req, res) => {
 });
 
 // POST /api/team/:teamId/members - Update team members
-app.post('/api/team/:teamId/members', async (req, res) => {
+app.post('/api/team/:teamId/members', teamWriteLimiter, async (req, res) => {
   try {
     const { teamId } = req.params;
     const { password, members, archivedMembers } = req.body || {};
@@ -1171,7 +1187,7 @@ app.post('/api/team/:teamId/members', async (req, res) => {
 });
 
 // POST /api/team/:teamId/password - Change team password
-app.post('/api/team/:teamId/password', async (req, res) => {
+app.post('/api/team/:teamId/password', teamWriteLimiter, async (req, res) => {
   try {
     const { teamId } = req.params;
     const { password, newPassword } = req.body || {};
@@ -1203,7 +1219,7 @@ app.post('/api/team/:teamId/password', async (req, res) => {
 });
 
 // POST /api/team/:teamId/delete - Delete a team
-app.post('/api/team/:teamId/delete', async (req, res) => {
+app.post('/api/team/:teamId/delete', teamWriteLimiter, async (req, res) => {
   try {
     const { teamId } = req.params;
     const { password } = req.body || {};
