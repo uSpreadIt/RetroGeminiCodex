@@ -76,6 +76,24 @@ describe('dataService', () => {
         };
       }
 
+      // GET /api/team/list
+      if (urlPath === '/api/team/list') {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            teams: [
+              {
+                id: mockTeam.id,
+                name: mockTeam.name,
+                memberCount: mockTeam.members.length,
+                lastConnectionDate: mockTeam.lastConnectionDate
+              }
+            ]
+          })
+        };
+      }
+
       // POST /api/team/:teamId (get team data)
       if (urlPath.match(/^\/api\/team\/[^/]+$/) && options?.method === 'POST') {
         return {
@@ -298,6 +316,13 @@ describe('dataService', () => {
 
       dataService.logout();
       expect(dataService.isAuthenticated()).toBe(false);
+    });
+
+    it('lists team summaries', async () => {
+      const list = await dataService.listTeams();
+      expect(list).toHaveLength(1);
+      expect(list[0].name).toBe(mockTeam.name);
+      expect(list[0].memberCount).toBe(mockTeam.members.length);
     });
 
     it('requests password reset email', async () => {

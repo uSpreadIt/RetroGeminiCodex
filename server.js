@@ -947,6 +947,23 @@ app.post('/api/team/create', authLimiter, async (req, res) => {
   }
 });
 
+// GET /api/team/list - List team names for login (no sensitive data)
+app.get('/api/team/list', teamReadLimiter, async (_req, res) => {
+  try {
+    const currentData = await loadPersistedData();
+    const teams = currentData.teams.map((team) => ({
+      id: team.id,
+      name: team.name,
+      memberCount: Array.isArray(team.members) ? team.members.length : 0,
+      lastConnectionDate: team.lastConnectionDate
+    }));
+    res.json({ teams });
+  } catch (err) {
+    console.error('[Server] Failed to list teams', err);
+    res.status(500).json({ error: 'failed_to_list' });
+  }
+});
+
 // POST /api/team/:teamId - Get team data (with auth in body for security)
 app.post('/api/team/:teamId', teamReadLimiter, async (req, res) => {
   try {
