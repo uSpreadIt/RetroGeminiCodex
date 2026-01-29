@@ -5,11 +5,6 @@ All notable changes to RetroGemini will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 Version follows `X.Y` format where X increments for new features and Y for bug fixes.
 
-## [5.8] - 2026-01-29
-
-### Security
-- Add rate limiting to team APIs to reduce abuse and protect team data
-
 ## [5.0] - 2026-01-29
 
 ### Added
