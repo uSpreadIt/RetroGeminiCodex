@@ -1868,7 +1868,7 @@ const Dashboard: React.FC<Props> = ({ team, currentUser, onOpenSession, onOpenHe
             </div>
           )}
 
-          {/* Health Check Templates */}
+          {/* Health Check Templates (Custom Only) */}
           <div className="mb-8">
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-xl font-bold text-slate-800">Health Check Templates</h2>
@@ -1883,78 +1883,80 @@ const Dashboard: React.FC<Props> = ({ team, currentUser, onOpenSession, onOpenHe
             </div>
 
             <div className="space-y-3">
-              {healthCheckTemplates.map(template => (
-                <div key={template.id} className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <h3 className="font-bold text-slate-800 flex items-center">
-                        {template.name}
-                        {template.isDefault && (
-                          <span className="ml-2 text-xs bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">Default</span>
+              {healthCheckTemplates.filter(t => !t.isDefault).length === 0 ? (
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-6 text-center">
+                  <span className="material-symbols-outlined text-4xl text-slate-300 mb-2">dashboard_customize</span>
+                  <p className="text-slate-500">No custom health check templates yet.</p>
+                  {isAdmin && <p className="text-sm text-slate-400 mt-1">Create one to tailor health checks to your team's needs.</p>}
+                </div>
+              ) : (
+                healthCheckTemplates.filter(t => !t.isDefault).map(template => (
+                  <div key={template.id} className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <h3 className="font-bold text-slate-800 flex items-center">
+                          {template.name}
+                        </h3>
+                        <p className="text-sm text-slate-500 mt-1">{template.dimensions.length} dimensions</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => toggleTemplateDetails(template.id)}
+                          className="text-slate-400 hover:text-slate-600"
+                          title={expandedTemplates.includes(template.id) ? 'Hide details' : 'View details'}
+                        >
+                          <span className="material-symbols-outlined">{expandedTemplates.includes(template.id) ? 'expand_less' : 'expand_more'}</span>
+                        </button>
+                        {isAdmin && (
+                          <>
+                            <button
+                              onClick={() => handleOpenTemplateEditor(template)}
+                              className="text-slate-400 hover:text-indigo-600"
+                              title="Edit template"
+                            >
+                              <span className="material-symbols-outlined">edit</span>
+                            </button>
+                            <button
+                              onClick={() => handleDeleteTemplate(template.id)}
+                              className="text-slate-400 hover:text-red-500"
+                              title="Delete template"
+                            >
+                              <span className="material-symbols-outlined">delete</span>
+                            </button>
+                          </>
                         )}
-                      </h3>
-                      <p className="text-sm text-slate-500 mt-1">{template.dimensions.length} dimensions</p>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => toggleTemplateDetails(template.id)}
-                        className="text-slate-400 hover:text-slate-600"
-                        title={expandedTemplates.includes(template.id) ? 'Hide details' : 'View details'}
-                      >
-                        <span className="material-symbols-outlined">{expandedTemplates.includes(template.id) ? 'expand_less' : 'expand_more'}</span>
-                      </button>
-                      {!template.isDefault && isAdmin && (
-                        <>
-                          <button
-                            onClick={() => handleOpenTemplateEditor(template)}
-                            className="text-slate-400 hover:text-indigo-600"
-                            title="Edit template"
-                          >
-                            <span className="material-symbols-outlined">edit</span>
-                          </button>
-                          <button
-                            onClick={() => handleDeleteTemplate(template.id)}
-                            className="text-slate-400 hover:text-red-500"
-                            title="Delete template"
-                          >
-                            <span className="material-symbols-outlined">delete</span>
-                          </button>
-                        </>
+
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {template.dimensions.slice(0, 5).map(dim => (
+                        <span key={dim.id} className="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded">
+                          {dim.name}
+                        </span>
+                      ))}
+                      {template.dimensions.length > 5 && (
+                        <span className="text-xs text-slate-400">+{template.dimensions.length - 5} more</span>
                       )}
                     </div>
-                  </div>
 
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {template.dimensions.slice(0, 5).map(dim => (
-                      <span key={dim.id} className="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded">
-                        {dim.name}
-                      </span>
-                    ))}
-                    {template.dimensions.length > 5 && (
-                      <span className="text-xs text-slate-400">+{template.dimensions.length - 5} more</span>
+                    {expandedTemplates.includes(template.id) && (
+                      <div className="mt-4 space-y-2">
+                        {template.dimensions.map(dim => (
+                          <div key={dim.id} className="border border-slate-200 rounded-lg p-3 bg-slate-50">
+                            <div className="font-bold text-slate-800 text-sm">{dim.name}</div>
+                            <div className="text-xs text-emerald-700 mt-1"><strong className="text-emerald-600">👍</strong> {dim.goodDescription}</div>
+                            <div className="text-xs text-rose-700 mt-1"><strong className="text-rose-600">👎</strong> {dim.badDescription}</div>
+                          </div>
+                        ))}
+                      </div>
                     )}
                   </div>
-
-                  {expandedTemplates.includes(template.id) && (
-                    <div className="mt-4 space-y-2">
-                      {template.isDefault && (
-                        <div className="text-xs text-slate-500">This default template is read-only.</div>
-                      )}
-                      {template.dimensions.map(dim => (
-                        <div key={dim.id} className="border border-slate-200 rounded-lg p-3 bg-slate-50">
-                          <div className="font-bold text-slate-800 text-sm">{dim.name}</div>
-                          <div className="text-xs text-emerald-700 mt-1"><strong className="text-emerald-600">👍</strong> {dim.goodDescription}</div>
-                          <div className="text-xs text-rose-700 mt-1"><strong className="text-rose-600">👎</strong> {dim.badDescription}</div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </div>
 
-          {/* Retro Templates */}
+          {/* Retro Templates (Custom Only) */}
           <div>
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-xl font-bold text-slate-800">Retrospective Templates</h2>
@@ -1975,37 +1977,37 @@ const Dashboard: React.FC<Props> = ({ team, currentUser, onOpenSession, onOpenHe
               )}
             </div>
             <div className="space-y-3">
-              {['Start/Stop/Continue', '4L', 'Mad/Sad/Glad', 'Sailboat', 'Went Well'].map((name, idx) => (
-                <div key={idx} className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-                  <h3 className="font-bold text-slate-800 flex items-center">
-                    {name}
-                    <span className="ml-2 text-xs bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">Default</span>
-                  </h3>
+              {(!team.customTemplates || team.customTemplates.length === 0) ? (
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-6 text-center">
+                  <span className="material-symbols-outlined text-4xl text-slate-300 mb-2">view_column</span>
+                  <p className="text-slate-500">No custom retrospective templates yet.</p>
+                  {isAdmin && <p className="text-sm text-slate-400 mt-1">Create one to tailor retrospectives to your team's workflow.</p>}
                 </div>
-              ))}
-              {team.customTemplates?.map((template, idx) => (
-                <div key={idx} className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <h3 className="font-bold text-slate-800">{template.name}</h3>
-                      <p className="text-sm text-slate-500 mt-1">{template.cols.length} columns</p>
+              ) : (
+                team.customTemplates.map((template, idx) => (
+                  <div key={idx} className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <h3 className="font-bold text-slate-800">{template.name}</h3>
+                        <p className="text-sm text-slate-500 mt-1">{template.cols.length} columns</p>
+                      </div>
+                      {isAdmin && (
+                        <button
+                          onClick={() => {
+                            const newTemplates = (team.customTemplates || []).filter((_, i) => i !== idx);
+                            dataService.updateTeam({ ...team, customTemplates: newTemplates });
+                            onRefresh();
+                          }}
+                          className="text-slate-400 hover:text-red-500"
+                          title="Delete template"
+                        >
+                          <span className="material-symbols-outlined">delete</span>
+                        </button>
+                      )}
                     </div>
-                    {isAdmin && (
-                      <button
-                        onClick={() => {
-                          const newTemplates = (team.customTemplates || []).filter((_, i) => i !== idx);
-                          dataService.updateTeam({ ...team, customTemplates: newTemplates });
-                          onRefresh();
-                        }}
-                        className="text-slate-400 hover:text-red-500"
-                        title="Delete template"
-                      >
-                        <span className="material-symbols-outlined">delete</span>
-                      </button>
-                    )}
                   </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </div>
         </div>
