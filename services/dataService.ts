@@ -194,7 +194,7 @@ const HEALTH_CHECK_TEMPLATES: HealthCheckTemplate[] = [
     {
         id: 'team_health_fr',
         name: 'Bilan de santé (FR)',
-        isDefault: false,
+        isDefault: true,
         dimensions: [
             {
                 id: 'autonomie',
