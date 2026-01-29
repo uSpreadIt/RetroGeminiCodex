@@ -640,7 +640,7 @@ const Dashboard: React.FC<Props> = ({ team, currentUser, onOpenSession, onOpenHe
                           </button>
                         </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-80 overflow-y-auto pr-2">
                             <button onClick={() => handleStartRetro(dataService.getPresets()['start_stop_continue'])} className="p-4 border border-slate-200 rounded-xl hover:border-retro-primary hover:bg-indigo-50 transition text-left group">
                                 <div className="font-bold text-indigo-700 mb-2 group-hover:text-retro-primary">Start, Stop, Continue</div>
                                 <p className="text-xs text-slate-500">The classic format.</p>
@@ -658,8 +658,40 @@ const Dashboard: React.FC<Props> = ({ team, currentUser, onOpenSession, onOpenHe
                                 <p className="text-xs text-slate-500">Wind, anchors, rocks, and goals.</p>
                             </button>
                             <button onClick={() => handleStartRetro(dataService.getPresets()['went_well'])} className="p-4 border border-slate-200 rounded-xl hover:border-retro-primary hover:bg-indigo-50 transition text-left group">
-                                <div className="font-bold text-indigo-700 mb-2 group-hover:text-retro-primary">Went Well / Improve / Ideas</div>
-                                <p className="text-xs text-slate-500">Fast three-column retro.</p>
+                                <div className="font-bold text-indigo-700 mb-2 group-hover:text-retro-primary">What Went Well</div>
+                                <p className="text-xs text-slate-500">Well, not well, try next, puzzles.</p>
+                            </button>
+                            <button onClick={() => handleStartRetro(dataService.getPresets()['kalm'])} className="p-4 border border-slate-200 rounded-xl hover:border-retro-primary hover:bg-indigo-50 transition text-left group">
+                                <div className="font-bold text-indigo-700 mb-2 group-hover:text-retro-primary">KALM</div>
+                                <p className="text-xs text-slate-500">Keep, Add, Less, More.</p>
+                            </button>
+                            <button onClick={() => handleStartRetro(dataService.getPresets()['daki'])} className="p-4 border border-slate-200 rounded-xl hover:border-retro-primary hover:bg-indigo-50 transition text-left group">
+                                <div className="font-bold text-indigo-700 mb-2 group-hover:text-retro-primary">DAKI</div>
+                                <p className="text-xs text-slate-500">Drop, Add, Keep, Improve.</p>
+                            </button>
+                            <button onClick={() => handleStartRetro(dataService.getPresets()['starfish'])} className="p-4 border border-slate-200 rounded-xl hover:border-retro-primary hover:bg-indigo-50 transition text-left group">
+                                <div className="font-bold text-indigo-700 mb-2 group-hover:text-retro-primary">Starfish</div>
+                                <p className="text-xs text-slate-500">Stop, Less, Keep, More, Start.</p>
+                            </button>
+                            <button onClick={() => handleStartRetro(dataService.getPresets()['rose_thorn_bud'])} className="p-4 border border-slate-200 rounded-xl hover:border-retro-primary hover:bg-indigo-50 transition text-left group">
+                                <div className="font-bold text-indigo-700 mb-2 group-hover:text-retro-primary">Rose, Thorn, Bud</div>
+                                <p className="text-xs text-slate-500">Positives, challenges, potential.</p>
+                            </button>
+                            <button onClick={() => handleStartRetro(dataService.getPresets()['hot_air_balloon'])} className="p-4 border border-slate-200 rounded-xl hover:border-retro-primary hover:bg-indigo-50 transition text-left group">
+                                <div className="font-bold text-indigo-700 mb-2 group-hover:text-retro-primary">Hot Air Balloon</div>
+                                <p className="text-xs text-slate-500">Fire, sandbags, storms, sunny skies.</p>
+                            </button>
+                            <button onClick={() => handleStartRetro(dataService.getPresets()['speed_car'])} className="p-4 border border-slate-200 rounded-xl hover:border-retro-primary hover:bg-indigo-50 transition text-left group">
+                                <div className="font-bold text-indigo-700 mb-2 group-hover:text-retro-primary">Speed Car</div>
+                                <p className="text-xs text-slate-500">Engine, parachute, abyss, bridge.</p>
+                            </button>
+                            <button onClick={() => handleStartRetro(dataService.getPresets()['lean_coffee'])} className="p-4 border border-slate-200 rounded-xl hover:border-retro-primary hover:bg-indigo-50 transition text-left group">
+                                <div className="font-bold text-indigo-700 mb-2 group-hover:text-retro-primary">Lean Coffee</div>
+                                <p className="text-xs text-slate-500">To discuss, discussing, discussed.</p>
+                            </button>
+                            <button onClick={() => handleStartRetro(dataService.getPresets()['three_little_pigs'])} className="p-4 border border-slate-200 rounded-xl hover:border-retro-primary hover:bg-indigo-50 transition text-left group">
+                                <div className="font-bold text-indigo-700 mb-2 group-hover:text-retro-primary">Three Little Pigs</div>
+                                <p className="text-xs text-slate-500">Straw, stick, brick houses, wolf.</p>
                             </button>
                         </div>
 
