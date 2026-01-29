@@ -130,6 +130,12 @@ const TeamLogin: React.FC<Props> = ({ onLogin, onJoin, inviteData, onSuperAdminL
   }, [inviteData]);
 
   useEffect(() => {
+    if (selectionMode === 'NEW_NAME') {
+      setNameLocked(false);
+    }
+  }, [selectionMode]);
+
+  useEffect(() => {
     if (!inviteData || !isFullTeam(selectedTeam)) {
       setNameLocked(false);
       return;
@@ -157,7 +163,7 @@ const TeamLogin: React.FC<Props> = ({ onLogin, onJoin, inviteData, onSuperAdminL
       return;
     }
 
-    if (inviteData.memberName && !selectedMemberId && !name) {
+    if (selectionMode !== 'NEW_NAME' && inviteData.memberName && !selectedMemberId && !name) {
       if (inviteData.memberEmail) {
         setName('');
       } else {
@@ -165,7 +171,7 @@ const TeamLogin: React.FC<Props> = ({ onLogin, onJoin, inviteData, onSuperAdminL
       }
       setNameLocked(false);
     }
-  }, [inviteData, name, normalizeEmail, selectedMemberId, selectedTeam]);
+  }, [inviteData, name, normalizeEmail, selectedMemberId, selectedTeam, selectionMode]);
 
   const memberSelectionOptions = React.useMemo(() => {
     if (!isFullTeam(selectedTeam)) return [];
@@ -227,6 +233,10 @@ const TeamLogin: React.FC<Props> = ({ onLogin, onJoin, inviteData, onSuperAdminL
       if (selectedMember) {
         userName = selectedMember.name;
       }
+    }
+    if (selectionMode === 'NEW_NAME' && inviteData?.memberEmail && !userName) {
+      setError('Please enter your name');
+      return;
     }
     if (!userName) {
       setError('Please enter your name');
