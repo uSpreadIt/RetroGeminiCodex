@@ -1557,6 +1557,33 @@ app.post('/api/super-admin/teams', superAdminActionLimiter, (req, res) => {
     });
 });
 
+app.post('/api/super-admin/feedbacks', superAdminActionLimiter, (req, res) => {
+  const { password } = req.body || {};
+
+  if (!SUPER_ADMIN_PASSWORD || !secureCompare(password, SUPER_ADMIN_PASSWORD)) {
+    return res.status(401).json({ error: 'unauthorized' });
+  }
+
+  refreshPersistedData()
+    .then((currentData) => {
+      const feedbacks = currentData.teams.flatMap((team) =>
+        (team.teamFeedbacks || []).map((feedback) => ({
+          ...feedback,
+          teamId: feedback.teamId || team.id,
+          teamName: feedback.teamName || team.name,
+          isRead: feedback.isRead ?? false,
+          status: feedback.status || 'pending'
+        }))
+      );
+      feedbacks.sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
+      res.json({ feedbacks });
+    })
+    .catch((err) => {
+      console.error('[Server] Failed to load feedbacks', err);
+      res.status(500).json({ error: 'failed_to_load' });
+    });
+});
+
 /**
  * Helper for super admin operations: atomically read-modify-write with retry.
  * The mutator function receives the current data and must return the modified copy.
@@ -1602,6 +1629,64 @@ app.post('/api/super-admin/update-email', superAdminActionLimiter, async (req, r
     res.json({ success: true });
   } catch (err) {
     console.error('[Server] Failed to update email', err);
+    res.status(500).json({ error: 'failed_to_save' });
+  }
+});
+
+app.post('/api/super-admin/feedbacks/update', superAdminActionLimiter, async (req, res) => {
+  const { password, teamId, feedbackId, updates } = req.body || {};
+
+  if (!SUPER_ADMIN_PASSWORD || !secureCompare(password, SUPER_ADMIN_PASSWORD)) {
+    return res.status(401).json({ error: 'unauthorized' });
+  }
+
+  if (!teamId || !feedbackId || !updates) {
+    return res.status(400).json({ error: 'missing_feedback_data' });
+  }
+
+  try {
+    await atomicReadModifyWrite((data) => {
+      const team = data.teams.find(t => t.id === teamId);
+      if (!team || !team.teamFeedbacks) return null;
+      const feedback = team.teamFeedbacks.find(f => f.id === feedbackId);
+      if (!feedback) return null;
+      Object.assign(feedback, updates);
+      if (!feedback.teamName) {
+        feedback.teamName = team.name;
+      }
+      if (!feedback.teamId) {
+        feedback.teamId = team.id;
+      }
+      return data;
+    });
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[Server] Failed to update feedback', err);
+    res.status(500).json({ error: 'failed_to_save' });
+  }
+});
+
+app.post('/api/super-admin/feedbacks/delete', superAdminActionLimiter, async (req, res) => {
+  const { password, teamId, feedbackId } = req.body || {};
+
+  if (!SUPER_ADMIN_PASSWORD || !secureCompare(password, SUPER_ADMIN_PASSWORD)) {
+    return res.status(401).json({ error: 'unauthorized' });
+  }
+
+  if (!teamId || !feedbackId) {
+    return res.status(400).json({ error: 'missing_feedback_data' });
+  }
+
+  try {
+    await atomicReadModifyWrite((data) => {
+      const team = data.teams.find(t => t.id === teamId);
+      if (!team || !team.teamFeedbacks) return null;
+      team.teamFeedbacks = team.teamFeedbacks.filter(f => f.id !== feedbackId);
+      return data;
+    });
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[Server] Failed to delete feedback', err);
     res.status(500).json({ error: 'failed_to_save' });
   }
 });
