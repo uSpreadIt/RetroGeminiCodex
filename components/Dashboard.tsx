@@ -2034,10 +2034,6 @@ const Dashboard: React.FC<Props> = ({ team, currentUser, onOpenSession, onOpenHe
               // Silently ignore notification failures - feedback was already saved
             });
           }}
-          onDeleteFeedback={(feedbackId) => {
-            dataService.deleteTeamFeedback(team.id, feedbackId);
-            onRefresh();
-          }}
           onRefresh={onRefresh}
         />
       )}

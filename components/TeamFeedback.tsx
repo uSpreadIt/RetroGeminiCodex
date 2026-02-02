@@ -9,7 +9,6 @@ interface TeamFeedbackProps {
   currentUserName: string;
   feedbacks: TeamFeedbackType[];
   onSubmitFeedback: (feedback: Omit<TeamFeedbackType, 'id' | 'submittedAt' | 'isRead' | 'status' | 'comments'>) => void;
-  onDeleteFeedback: (feedbackId: string) => void;
   onRefresh: () => void;
 }
 
@@ -24,7 +23,6 @@ const TeamFeedback: React.FC<TeamFeedbackProps> = ({
   currentUserName,
   feedbacks: localFeedbacks,
   onSubmitFeedback,
-  onDeleteFeedback,
   onRefresh
 }) => {
   const [showForm, setShowForm] = useState(false);
@@ -192,12 +190,25 @@ const TeamFeedback: React.FC<TeamFeedbackProps> = ({
     }
   };
 
-  const handleDeleteFeedback = (feedbackId: string) => {
-    if (confirm('Are you sure you want to delete this feedback?')) {
-      onDeleteFeedback(feedbackId);
-      setTimeout(() => {
+  const handleDeleteFeedback = async (feedbackId: string) => {
+    if (!confirm('Are you sure you want to delete this feedback?')) return;
+
+    try {
+      const response = await fetch('/api/feedbacks/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          teamId,
+          password: teamPassword,
+          feedbackId
+        })
+      });
+      if (response.ok) {
         loadAllFeedbacks();
-      }, 500);
+        onRefresh();
+      }
+    } catch (err) {
+      console.error('Failed to delete feedback', err);
     }
   };
 
@@ -524,16 +535,6 @@ const TeamFeedback: React.FC<TeamFeedbackProps> = ({
                   Submitted by {feedback.submittedByName} on {formatDate(feedback.submittedAt).split(',')[0]}
                 </div>
 
-                {feedback.adminNotes && (
-                  <div className="mb-3 p-3 bg-amber-50 border border-amber-200 rounded">
-                    <p className="text-sm font-medium text-amber-800 mb-1">
-                      <span className="material-symbols-outlined text-sm align-middle mr-1">admin_panel_settings</span>
-                      Admin note:
-                    </p>
-                    <p className="text-sm text-amber-700">{feedback.adminNotes}</p>
-                  </div>
-                )}
-
                 {/* Comments Section */}
                 <div className="mt-4 pt-4 border-t border-slate-200">
                   <button
@@ -552,16 +553,23 @@ const TeamFeedback: React.FC<TeamFeedbackProps> = ({
                       {/* Existing comments */}
                       {feedback.comments && feedback.comments.length > 0 ? (
                         feedback.comments.map((comment) => (
-                          <div key={comment.id} className="bg-slate-50 rounded p-3">
+                          <div key={comment.id} className={`rounded p-3 ${comment.isAdmin ? 'bg-amber-50 border border-amber-200' : 'bg-slate-50'}`}>
                             <div className="flex justify-between items-start">
                               <div className="text-sm">
-                                <span className="font-medium text-slate-800">{comment.authorName}</span>
-                                <span className="text-slate-400"> · </span>
-                                <span className="text-slate-500">{comment.teamName}</span>
+                                {comment.isAdmin && (
+                                  <span className="material-symbols-outlined text-xs align-middle mr-1 text-amber-600">admin_panel_settings</span>
+                                )}
+                                <span className={`font-medium ${comment.isAdmin ? 'text-amber-800' : 'text-slate-800'}`}>{comment.authorName}</span>
+                                {!comment.isAdmin && (
+                                  <>
+                                    <span className="text-slate-400"> · </span>
+                                    <span className="text-slate-500">{comment.teamName}</span>
+                                  </>
+                                )}
                                 <span className="text-slate-400"> · </span>
                                 <span className="text-slate-400">{formatDate(comment.createdAt)}</span>
                               </div>
-                              {comment.teamId === teamId && (
+                              {comment.teamId === teamId && !comment.isAdmin && (
                                 <button
                                   onClick={() => handleDeleteComment(feedback.teamId, feedback.id, comment.id)}
                                   className="text-red-500 hover:text-red-700"
@@ -571,7 +579,7 @@ const TeamFeedback: React.FC<TeamFeedbackProps> = ({
                                 </button>
                               )}
                             </div>
-                            <p className="text-sm text-slate-700 mt-1">{comment.content}</p>
+                            <p className={`text-sm mt-1 ${comment.isAdmin ? 'text-amber-700' : 'text-slate-700'}`}>{comment.content}</p>
                           </div>
                         ))
                       ) : (

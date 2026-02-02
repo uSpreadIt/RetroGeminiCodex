@@ -1545,17 +1545,75 @@ app.post('/api/feedbacks/comment', teamWriteLimiter, async (req, res) => {
       createdAt: new Date().toISOString()
     };
 
+    let feedbackTitle = null;
+    let feedbackType = null;
+
     await atomicReadModifyWrite((data) => {
       const feedbackTeam = data.teams.find(t => t.id === feedbackTeamId);
       if (!feedbackTeam || !feedbackTeam.teamFeedbacks) return null;
       const feedback = feedbackTeam.teamFeedbacks.find(f => f.id === feedbackId);
       if (!feedback) return null;
+
+      feedbackTitle = feedback.title;
+      feedbackType = feedback.type;
+
       if (!feedback.comments) {
         feedback.comments = [];
       }
       feedback.comments.push(newComment);
       return data;
     });
+
+    // Notify super admin about new comment from team
+    if (feedbackTitle && smtpEnabled && mailer) {
+      const settings = await loadGlobalSettings();
+      const adminEmail = settings.adminEmail;
+
+      if (adminEmail) {
+        const typeLabel = feedbackType === 'bug' ? 'Bug Report' : 'Feature Request';
+        const safeFeedbackTitle = escapeHtml(feedbackTitle);
+        const safeTeamName = escapeHtml(requestingTeamName);
+        const safeAuthorName = escapeHtml(authorName);
+        const safeContent = escapeHtml(content.trim().slice(0, 1000));
+
+        try {
+          await mailer.sendMail({
+            from: process.env.FROM_EMAIL || process.env.SMTP_USER,
+            to: adminEmail,
+            subject: `💬 New Comment on ${typeLabel}: ${feedbackTitle}`,
+            text: `New comment from ${requestingTeamName}
+
+${typeLabel}: ${feedbackTitle}
+Comment by: ${authorName}
+
+"${content.trim().slice(0, 1000)}"
+
+---
+Log in to the Super Admin Dashboard to view and respond.
+`,
+            html: `
+<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  <h2 style="color: #4f46e5;">💬 New Comment</h2>
+  <p>New comment from <strong>${safeTeamName}</strong></p>
+  <div style="background: #f8fafc; border-radius: 8px; padding: 16px; margin: 16px 0;">
+    <p style="margin: 0 0 4px 0; color: #64748b; font-size: 14px;">${typeLabel}</p>
+    <h3 style="margin: 0; color: #1e293b;">${safeFeedbackTitle}</h3>
+  </div>
+  <div style="background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; padding: 16px; margin: 16px 0;">
+    <p style="margin: 0 0 8px 0; color: #0369a1; font-size: 14px;">Comment by <strong>${safeAuthorName}</strong>:</p>
+    <p style="margin: 0; color: #0c4a6e; white-space: pre-wrap;">${safeContent}</p>
+  </div>
+  <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;">
+  <p style="color: #94a3b8; font-size: 12px;">Log in to the Super Admin Dashboard to view and respond.</p>
+</div>
+`
+          });
+          addServerLog('info', 'email', `Comment notification sent to admin for: ${feedbackTitle}`);
+        } catch (emailErr) {
+          console.error('[Server] Failed to send comment notification to admin', emailErr);
+        }
+      }
+    }
 
     res.json({ success: true, comment: newComment });
   } catch (err) {
@@ -1601,6 +1659,93 @@ app.post('/api/feedbacks/comment/delete', teamWriteLimiter, async (req, res) => 
     res.json({ success: true });
   } catch (err) {
     console.error('[Server] Failed to delete comment', err);
+    res.status(500).json({ error: 'failed_to_save' });
+  }
+});
+
+// Delete a feedback (only the author's team can delete)
+app.post('/api/feedbacks/delete', teamWriteLimiter, async (req, res) => {
+  try {
+    const { teamId, password, feedbackId } = req.body || {};
+
+    // Authenticate the requesting team
+    const { team, error } = await authenticateTeam(teamId, password);
+    if (error) {
+      return res.status(401).json({ error });
+    }
+
+    if (!feedbackId) {
+      return res.status(400).json({ error: 'missing_feedback_id' });
+    }
+
+    let feedbackTitle = null;
+    let feedbackType = null;
+    let teamName = team ? team.name : 'Unknown Team';
+
+    await atomicReadModifyWrite((data) => {
+      const feedbackTeam = data.teams.find(t => t.id === teamId);
+      if (!feedbackTeam || !feedbackTeam.teamFeedbacks) return null;
+
+      // Find feedback and verify ownership
+      const feedback = feedbackTeam.teamFeedbacks.find(f => f.id === feedbackId);
+      if (!feedback || feedback.teamId !== teamId) {
+        return null; // Not authorized
+      }
+
+      feedbackTitle = feedback.title;
+      feedbackType = feedback.type;
+
+      feedbackTeam.teamFeedbacks = feedbackTeam.teamFeedbacks.filter(f => f.id !== feedbackId);
+      return data;
+    });
+
+    // Notify super admin about feedback deletion
+    if (feedbackTitle && smtpEnabled && mailer) {
+      const settings = await loadGlobalSettings();
+      const adminEmail = settings.adminEmail;
+
+      if (adminEmail) {
+        const typeLabel = feedbackType === 'bug' ? 'Bug Report' : 'Feature Request';
+        const safeFeedbackTitle = escapeHtml(feedbackTitle);
+        const safeTeamName = escapeHtml(teamName);
+
+        try {
+          await mailer.sendMail({
+            from: process.env.FROM_EMAIL || process.env.SMTP_USER,
+            to: adminEmail,
+            subject: `🗑️ Feedback Deleted by Team: ${feedbackTitle}`,
+            text: `A feedback has been deleted by its author.
+
+${typeLabel}: ${feedbackTitle}
+Team: ${teamName}
+
+---
+This notification was sent from RetroGemini.
+`,
+            html: `
+<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  <h2 style="color: #64748b;">🗑️ Feedback Deleted</h2>
+  <p>A feedback has been deleted by its author.</p>
+  <div style="background: #f8fafc; border-radius: 8px; padding: 16px; margin: 16px 0;">
+    <p style="margin: 0 0 4px 0; color: #64748b; font-size: 14px;">${typeLabel}</p>
+    <h3 style="margin: 0; color: #1e293b;">${safeFeedbackTitle}</h3>
+    <p style="margin: 8px 0 0 0; color: #64748b; font-size: 14px;">Team: ${safeTeamName}</p>
+  </div>
+  <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;">
+  <p style="color: #94a3b8; font-size: 12px;">This notification was sent from RetroGemini.</p>
+</div>
+`
+          });
+          addServerLog('info', 'email', `Feedback deletion notification sent to admin for: ${feedbackTitle}`);
+        } catch (emailErr) {
+          console.error('[Server] Failed to send feedback deletion notification to admin', emailErr);
+        }
+      }
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[Server] Failed to delete feedback', err);
     res.status(500).json({ error: 'failed_to_save' });
   }
 });
@@ -1904,7 +2049,6 @@ app.post('/api/super-admin/feedbacks/update', superAdminActionLimiter, async (re
     let feedbackType = null;
     let teamEmail = null;
     let teamName = null;
-    let adminNotes = null;
 
     await atomicReadModifyWrite((data) => {
       const team = data.teams.find(t => t.id === teamId);
@@ -1921,7 +2065,6 @@ app.post('/api/super-admin/feedbacks/update', superAdminActionLimiter, async (re
         feedbackType = feedback.type;
         teamEmail = team.facilitatorEmail;
         teamName = team.name;
-        adminNotes = updates.adminNotes || feedback.adminNotes;
       }
 
       Object.assign(feedback, updates);
@@ -1951,7 +2094,6 @@ app.post('/api/super-admin/feedbacks/update', superAdminActionLimiter, async (re
       const typeLabel = feedbackType === 'bug' ? 'Bug Report' : 'Feature Request';
       const safeFeedbackTitle = escapeHtml(feedbackTitle);
       const safeTeamName = escapeHtml(teamName);
-      const safeAdminNotes = adminNotes ? escapeHtml(adminNotes) : null;
 
       try {
         await mailer.sendMail({
@@ -1965,7 +2107,6 @@ The status of your ${typeLabel} has been updated.
 Title: ${feedbackTitle}
 Previous Status: ${statusLabels[oldStatus]}
 New Status: ${statusLabels[newStatus]}
-${adminNotes ? `\nAdmin Notes:\n${adminNotes}` : ''}
 
 ---
 This notification was sent because your feedback status was updated in RetroGemini.
@@ -1984,12 +2125,6 @@ This notification was sent because your feedback status was updated in RetroGemi
       <strong>New Status:</strong> <span style="color: ${newStatus === 'resolved' ? '#16a34a' : newStatus === 'rejected' ? '#dc2626' : newStatus === 'in_progress' ? '#2563eb' : '#ca8a04'}; font-weight: bold;">${statusLabels[newStatus]}</span>
     </p>
   </div>
-  ${safeAdminNotes ? `
-  <div style="background: #fffbeb; border: 1px solid #fcd34d; border-radius: 8px; padding: 16px; margin: 16px 0;">
-    <h4 style="margin: 0 0 8px 0; color: #92400e;">Admin Notes:</h4>
-    <p style="margin: 0; color: #78350f; white-space: pre-wrap;">${safeAdminNotes}</p>
-  </div>
-  ` : ''}
   <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;">
   <p style="color: #94a3b8; font-size: 12px;">
     This notification was sent because your feedback status was updated in RetroGemini.
@@ -2024,15 +2159,167 @@ app.post('/api/super-admin/feedbacks/delete', superAdminActionLimiter, async (re
   }
 
   try {
+    let feedbackTitle = null;
+    let feedbackType = null;
+    let teamEmail = null;
+    let teamName = null;
+
     await atomicReadModifyWrite((data) => {
       const team = data.teams.find(t => t.id === teamId);
       if (!team || !team.teamFeedbacks) return null;
+
+      // Get feedback info before deleting
+      const feedback = team.teamFeedbacks.find(f => f.id === feedbackId);
+      if (feedback) {
+        feedbackTitle = feedback.title;
+        feedbackType = feedback.type;
+        teamEmail = team.facilitatorEmail;
+        teamName = team.name;
+      }
+
       team.teamFeedbacks = team.teamFeedbacks.filter(f => f.id !== feedbackId);
       return data;
     });
+
+    // Send notification to team about deletion
+    if (feedbackTitle && teamEmail && smtpEnabled && mailer) {
+      const typeLabel = feedbackType === 'bug' ? 'Bug Report' : 'Feature Request';
+      const safeFeedbackTitle = escapeHtml(feedbackTitle);
+      const safeTeamName = escapeHtml(teamName);
+
+      try {
+        await mailer.sendMail({
+          from: process.env.FROM_EMAIL || process.env.SMTP_USER,
+          to: teamEmail,
+          subject: `🗑️ Feedback Deleted: ${feedbackTitle}`,
+          text: `Hello ${teamName},
+
+Your ${typeLabel} "${feedbackTitle}" has been deleted by the administrator.
+
+If you have questions about this action, please contact the administrator.
+
+---
+This notification was sent from RetroGemini.
+`,
+          html: `
+<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  <h2 style="color: #dc2626;">🗑️ Feedback Deleted</h2>
+  <p>Hello <strong>${safeTeamName}</strong>,</p>
+  <p>Your ${typeLabel} "<strong>${safeFeedbackTitle}</strong>" has been deleted by the administrator.</p>
+  <p>If you have questions about this action, please contact the administrator.</p>
+  <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;">
+  <p style="color: #94a3b8; font-size: 12px;">This notification was sent from RetroGemini.</p>
+</div>
+`
+        });
+        addServerLog('info', 'email', `Feedback deletion notification sent to ${teamEmail} for: ${feedbackTitle}`);
+      } catch (emailErr) {
+        console.error('[Server] Failed to send feedback deletion notification', emailErr);
+      }
+    }
+
     res.json({ success: true });
   } catch (err) {
     console.error('[Server] Failed to delete feedback', err);
+    res.status(500).json({ error: 'failed_to_save' });
+  }
+});
+
+// Super admin adds a comment to a feedback
+app.post('/api/super-admin/feedbacks/comment', superAdminActionLimiter, async (req, res) => {
+  const { password, teamId, feedbackId, content } = req.body || {};
+
+  if (!SUPER_ADMIN_PASSWORD || !secureCompare(password, SUPER_ADMIN_PASSWORD)) {
+    return res.status(401).json({ error: 'unauthorized' });
+  }
+
+  if (!teamId || !feedbackId || !content) {
+    return res.status(400).json({ error: 'missing_comment_data' });
+  }
+
+  try {
+    let feedbackTitle = null;
+    let feedbackType = null;
+    let teamEmail = null;
+    let teamName = null;
+
+    const commentId = `comment_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+    const newComment = {
+      id: commentId,
+      feedbackId,
+      teamId: 'super-admin',
+      teamName: 'Super Admin',
+      authorId: 'super-admin',
+      authorName: 'Super Admin',
+      content: content.trim().slice(0, 1000),
+      createdAt: new Date().toISOString(),
+      isAdmin: true
+    };
+
+    await atomicReadModifyWrite((data) => {
+      const team = data.teams.find(t => t.id === teamId);
+      if (!team || !team.teamFeedbacks) return null;
+      const feedback = team.teamFeedbacks.find(f => f.id === feedbackId);
+      if (!feedback) return null;
+
+      feedbackTitle = feedback.title;
+      feedbackType = feedback.type;
+      teamEmail = team.facilitatorEmail;
+      teamName = team.name;
+
+      if (!feedback.comments) {
+        feedback.comments = [];
+      }
+      feedback.comments.push(newComment);
+      return data;
+    });
+
+    // Send notification to team about new admin comment
+    if (feedbackTitle && teamEmail && smtpEnabled && mailer) {
+      const typeLabel = feedbackType === 'bug' ? 'Bug Report' : 'Feature Request';
+      const safeFeedbackTitle = escapeHtml(feedbackTitle);
+      const safeTeamName = escapeHtml(teamName);
+      const safeContent = escapeHtml(content.trim().slice(0, 1000));
+
+      try {
+        await mailer.sendMail({
+          from: process.env.FROM_EMAIL || process.env.SMTP_USER,
+          to: teamEmail,
+          subject: `💬 Admin Comment on: ${feedbackTitle}`,
+          text: `Hello ${teamName},
+
+The administrator has added a comment on your ${typeLabel} "${feedbackTitle}":
+
+"${content.trim().slice(0, 1000)}"
+
+---
+This notification was sent from RetroGemini.
+`,
+          html: `
+<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  <h2 style="color: #4f46e5;">💬 Admin Comment</h2>
+  <p>Hello <strong>${safeTeamName}</strong>,</p>
+  <p>The administrator has added a comment on your ${typeLabel}:</p>
+  <div style="background: #f8fafc; border-radius: 8px; padding: 16px; margin: 16px 0;">
+    <h3 style="margin: 0 0 8px 0; color: #1e293b;">${safeFeedbackTitle}</h3>
+  </div>
+  <div style="background: #fffbeb; border: 1px solid #fcd34d; border-radius: 8px; padding: 16px; margin: 16px 0;">
+    <p style="margin: 0; color: #78350f; white-space: pre-wrap;">${safeContent}</p>
+  </div>
+  <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;">
+  <p style="color: #94a3b8; font-size: 12px;">This notification was sent from RetroGemini.</p>
+</div>
+`
+        });
+        addServerLog('info', 'email', `Admin comment notification sent to ${teamEmail} for: ${feedbackTitle}`);
+      } catch (emailErr) {
+        console.error('[Server] Failed to send admin comment notification', emailErr);
+      }
+    }
+
+    res.json({ success: true, comment: newComment });
+  } catch (err) {
+    console.error('[Server] Failed to add admin comment', err);
     res.status(500).json({ error: 'failed_to_save' });
   }
 });
