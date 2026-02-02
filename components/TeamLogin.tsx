@@ -124,10 +124,11 @@ const TeamLogin: React.FC<Props> = ({ onLogin, onJoin, inviteData, onSuperAdminL
   }, []);
 
   useEffect(() => {
-    if (inviteData?.memberName) {
+    if (selectionMode === 'NEW_NAME') return;
+    if (inviteData?.memberName && !name) {
       setName(inviteData.memberName);
     }
-  }, [inviteData]);
+  }, [inviteData, name, selectionMode]);
 
   useEffect(() => {
     if (selectionMode === 'NEW_NAME') {
@@ -137,6 +138,11 @@ const TeamLogin: React.FC<Props> = ({ onLogin, onJoin, inviteData, onSuperAdminL
 
   useEffect(() => {
     if (!inviteData || !isFullTeam(selectedTeam)) {
+      setNameLocked(false);
+      return;
+    }
+
+    if (selectionMode === 'NEW_NAME') {
       setNameLocked(false);
       return;
     }
@@ -163,7 +169,7 @@ const TeamLogin: React.FC<Props> = ({ onLogin, onJoin, inviteData, onSuperAdminL
       return;
     }
 
-    if (selectionMode !== 'NEW_NAME' && inviteData.memberName && !selectedMemberId && !name) {
+    if (inviteData.memberName && !selectedMemberId && !name) {
       if (inviteData.memberEmail) {
         setName('');
       } else {
