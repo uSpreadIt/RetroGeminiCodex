@@ -45,20 +45,27 @@ const TeamLogin: React.FC<Props> = ({ onLogin, onJoin, inviteData, onSuperAdminL
   // Handle password reset link
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
-    const resetToken = urlParams.get('reset');
+    const rawToken = urlParams.get('reset');
+    if (!rawToken) return;
 
-    if (resetToken) {
-      const verifyToken = async () => {
-        const tokenInfo = await dataService.verifyResetToken(resetToken);
-        if (tokenInfo.valid) {
-          setView('RESET_PASSWORD');
-        } else {
-          setError('The reset link is invalid or has expired');
-          setView('LIST');
-        }
-      };
-      verifyToken();
+    const resetToken = rawToken.trim();
+    const tokenPattern = /^[a-f0-9]{64}$/i;
+    if (!tokenPattern.test(resetToken)) {
+      setError('The reset link is invalid or has expired');
+      setView('LIST');
+      return;
     }
+
+    const verifyToken = async () => {
+      const tokenInfo = await dataService.verifyResetToken(resetToken);
+      if (tokenInfo.valid) {
+        setView('RESET_PASSWORD');
+      } else {
+        setError('The reset link is invalid or has expired');
+        setView('LIST');
+      }
+    };
+    verifyToken();
   }, []);
 
   // Handle invitation link - try auto-join or show member selection
