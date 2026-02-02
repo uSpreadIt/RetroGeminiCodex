@@ -1484,6 +1484,127 @@ Log in to the Super Admin Dashboard to review and respond to this feedback.
   }
 });
 
+// Get all feedbacks from all teams (for shared feedback hub)
+app.post('/api/feedbacks/all', teamReadLimiter, async (req, res) => {
+  try {
+    const { teamId, password } = req.body || {};
+
+    // Authenticate the requesting team
+    const { error } = await authenticateTeam(teamId, password);
+    if (error) {
+      return res.status(401).json({ error });
+    }
+
+    const currentData = await loadPersistedData();
+    const feedbacks = currentData.teams.flatMap((team) =>
+      (team.teamFeedbacks || []).map((feedback) => ({
+        ...feedback,
+        teamId: feedback.teamId || team.id,
+        teamName: feedback.teamName || team.name,
+        isRead: feedback.isRead ?? false,
+        status: feedback.status || 'pending',
+        comments: feedback.comments || []
+      }))
+    );
+    feedbacks.sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
+    res.json({ feedbacks });
+  } catch (err) {
+    console.error('[Server] Failed to load all feedbacks', err);
+    res.status(500).json({ error: 'failed_to_load' });
+  }
+});
+
+// Add a comment to a feedback
+app.post('/api/feedbacks/comment', teamWriteLimiter, async (req, res) => {
+  try {
+    const { teamId, password, feedbackTeamId, feedbackId, authorId, authorName, content } = req.body || {};
+
+    // Authenticate the requesting team
+    const { error } = await authenticateTeam(teamId, password);
+    if (error) {
+      return res.status(401).json({ error });
+    }
+
+    if (!feedbackTeamId || !feedbackId || !authorId || !authorName || !content) {
+      return res.status(400).json({ error: 'missing_comment_data' });
+    }
+
+    const currentData = await loadPersistedData();
+    const requestingTeam = currentData.teams.find(t => t.id === teamId);
+    const requestingTeamName = requestingTeam ? requestingTeam.name : 'Unknown Team';
+
+    const commentId = `comment_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+    const newComment = {
+      id: commentId,
+      feedbackId,
+      teamId,
+      teamName: requestingTeamName,
+      authorId,
+      authorName,
+      content: content.trim().slice(0, 1000), // Limit to 1000 chars
+      createdAt: new Date().toISOString()
+    };
+
+    await atomicReadModifyWrite((data) => {
+      const feedbackTeam = data.teams.find(t => t.id === feedbackTeamId);
+      if (!feedbackTeam || !feedbackTeam.teamFeedbacks) return null;
+      const feedback = feedbackTeam.teamFeedbacks.find(f => f.id === feedbackId);
+      if (!feedback) return null;
+      if (!feedback.comments) {
+        feedback.comments = [];
+      }
+      feedback.comments.push(newComment);
+      return data;
+    });
+
+    res.json({ success: true, comment: newComment });
+  } catch (err) {
+    console.error('[Server] Failed to add comment', err);
+    res.status(500).json({ error: 'failed_to_save' });
+  }
+});
+
+// Delete a comment from a feedback (only the author's team can delete)
+app.post('/api/feedbacks/comment/delete', teamWriteLimiter, async (req, res) => {
+  try {
+    const { teamId, password, feedbackTeamId, feedbackId, commentId } = req.body || {};
+
+    // Authenticate the requesting team
+    const { error } = await authenticateTeam(teamId, password);
+    if (error) {
+      return res.status(401).json({ error });
+    }
+
+    if (!feedbackTeamId || !feedbackId || !commentId) {
+      return res.status(400).json({ error: 'missing_comment_data' });
+    }
+
+    await atomicReadModifyWrite((data) => {
+      const feedbackTeam = data.teams.find(t => t.id === feedbackTeamId);
+      if (!feedbackTeam || !feedbackTeam.teamFeedbacks) return null;
+      const feedback = feedbackTeam.teamFeedbacks.find(f => f.id === feedbackId);
+      if (!feedback || !feedback.comments) return null;
+
+      // Find the comment and verify ownership
+      const comment = feedback.comments.find(c => c.id === commentId);
+      if (!comment) return null;
+
+      // Only allow deletion by the team that created the comment
+      if (comment.teamId !== teamId) {
+        return null; // Not authorized
+      }
+
+      feedback.comments = feedback.comments.filter(c => c.id !== commentId);
+      return data;
+    });
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[Server] Failed to delete comment', err);
+    res.status(500).json({ error: 'failed_to_save' });
+  }
+});
+
 app.post('/api/send-password-reset', async (req, res) => {
   if (!smtpEnabled || !mailer) {
     return res.status(501).json({ error: 'email_not_configured' });
@@ -1776,11 +1897,33 @@ app.post('/api/super-admin/feedbacks/update', superAdminActionLimiter, async (re
   }
 
   try {
+    let statusChanged = false;
+    let oldStatus = null;
+    let newStatus = null;
+    let feedbackTitle = null;
+    let feedbackType = null;
+    let teamEmail = null;
+    let teamName = null;
+    let adminNotes = null;
+
     await atomicReadModifyWrite((data) => {
       const team = data.teams.find(t => t.id === teamId);
       if (!team || !team.teamFeedbacks) return null;
       const feedback = team.teamFeedbacks.find(f => f.id === feedbackId);
       if (!feedback) return null;
+
+      // Check if status is changing
+      if (updates.status && updates.status !== feedback.status) {
+        statusChanged = true;
+        oldStatus = feedback.status;
+        newStatus = updates.status;
+        feedbackTitle = feedback.title;
+        feedbackType = feedback.type;
+        teamEmail = team.facilitatorEmail;
+        teamName = team.name;
+        adminNotes = updates.adminNotes || feedback.adminNotes;
+      }
+
       Object.assign(feedback, updates);
       if (!feedback.teamName) {
         feedback.teamName = team.name;
@@ -1790,6 +1933,78 @@ app.post('/api/super-admin/feedbacks/update', superAdminActionLimiter, async (re
       }
       return data;
     });
+
+    // Send email notification if status changed and team has an email configured
+    if (statusChanged && teamEmail && smtpEnabled && mailer) {
+      const statusLabels = {
+        pending: 'Pending',
+        in_progress: 'In Progress',
+        resolved: 'Resolved',
+        rejected: 'Rejected'
+      };
+      const statusEmojis = {
+        pending: '⏳',
+        in_progress: '🔄',
+        resolved: '✅',
+        rejected: '❌'
+      };
+      const typeLabel = feedbackType === 'bug' ? 'Bug Report' : 'Feature Request';
+      const safeFeedbackTitle = escapeHtml(feedbackTitle);
+      const safeTeamName = escapeHtml(teamName);
+      const safeAdminNotes = adminNotes ? escapeHtml(adminNotes) : null;
+
+      try {
+        await mailer.sendMail({
+          from: process.env.FROM_EMAIL || process.env.SMTP_USER,
+          to: teamEmail,
+          subject: `${statusEmojis[newStatus]} Feedback Status Updated: ${feedbackTitle}`,
+          text: `Hello ${teamName},
+
+The status of your ${typeLabel} has been updated.
+
+Title: ${feedbackTitle}
+Previous Status: ${statusLabels[oldStatus]}
+New Status: ${statusLabels[newStatus]}
+${adminNotes ? `\nAdmin Notes:\n${adminNotes}` : ''}
+
+---
+This notification was sent because your feedback status was updated in RetroGemini.
+`,
+          html: `
+<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  <h2 style="color: #4f46e5;">
+    ${statusEmojis[newStatus]} Feedback Status Updated
+  </h2>
+  <p>Hello <strong>${safeTeamName}</strong>,</p>
+  <p>The status of your ${typeLabel} has been updated.</p>
+  <div style="background: #f8fafc; border-radius: 8px; padding: 16px; margin: 16px 0;">
+    <h3 style="margin: 0 0 8px 0; color: #1e293b;">${safeFeedbackTitle}</h3>
+    <p style="margin: 4px 0; color: #64748b; font-size: 14px;">
+      <strong>Previous Status:</strong> <span style="color: #94a3b8;">${statusLabels[oldStatus]}</span><br>
+      <strong>New Status:</strong> <span style="color: ${newStatus === 'resolved' ? '#16a34a' : newStatus === 'rejected' ? '#dc2626' : newStatus === 'in_progress' ? '#2563eb' : '#ca8a04'}; font-weight: bold;">${statusLabels[newStatus]}</span>
+    </p>
+  </div>
+  ${safeAdminNotes ? `
+  <div style="background: #fffbeb; border: 1px solid #fcd34d; border-radius: 8px; padding: 16px; margin: 16px 0;">
+    <h4 style="margin: 0 0 8px 0; color: #92400e;">Admin Notes:</h4>
+    <p style="margin: 0; color: #78350f; white-space: pre-wrap;">${safeAdminNotes}</p>
+  </div>
+  ` : ''}
+  <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;">
+  <p style="color: #94a3b8; font-size: 12px;">
+    This notification was sent because your feedback status was updated in RetroGemini.
+  </p>
+</div>
+`
+        });
+        addServerLog('info', 'email', `Feedback status notification sent to ${teamEmail} for: ${feedbackTitle}`);
+      } catch (emailErr) {
+        // Log but don't fail - the update was successful
+        console.error('[Server] Failed to send feedback status notification email', emailErr);
+        addServerLog('warn', 'email', `Failed to send feedback status notification to ${teamEmail}: ${emailErr.message}`);
+      }
+    }
+
     res.json({ success: true });
   } catch (err) {
     console.error('[Server] Failed to update feedback', err);

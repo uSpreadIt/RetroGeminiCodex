@@ -1125,7 +1125,7 @@ const Dashboard: React.FC<Props> = ({ team, currentUser, onOpenSession, onOpenHe
             <span className="material-symbols-outlined mr-2">settings</span> Settings
         </button>
         <button onClick={() => setTab('FEEDBACK')} className={`dash-tab px-6 py-3 font-bold text-sm flex items-center transition whitespace-nowrap ${tab === 'FEEDBACK' ? 'active' : 'text-slate-500 hover:text-retro-primary'}`}>
-            <span className="material-symbols-outlined mr-2">feedback</span> Feedback
+            <span className="material-symbols-outlined mr-2">hub</span> Feedback Hub
         </button>
       </div>
 
@@ -2013,11 +2013,12 @@ const Dashboard: React.FC<Props> = ({ team, currentUser, onOpenSession, onOpenHe
         </div>
       )}
 
-      {/* Feedback Tab */}
+      {/* Feedback Hub Tab */}
       {tab === 'FEEDBACK' && (
         <TeamFeedback
           teamId={team.id}
           teamName={team.name}
+          teamPassword={dataService.getAuthenticatedPassword() || ''}
           currentUserId={currentUser.id}
           currentUserName={currentUser.name}
           feedbacks={team.teamFeedbacks || []}
@@ -2037,6 +2038,7 @@ const Dashboard: React.FC<Props> = ({ team, currentUser, onOpenSession, onOpenHe
             dataService.deleteTeamFeedback(team.id, feedbackId);
             onRefresh();
           }}
+          onRefresh={onRefresh}
         />
       )}
     </div>

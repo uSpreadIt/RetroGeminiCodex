@@ -23,6 +23,7 @@ const SuperAdmin: React.FC<Props> = ({ superAdminPassword, onExit }) => {
   const [successMessage, setSuccessMessage] = useState('');
   const [selectedFeedback, setSelectedFeedback] = useState<TeamFeedback | null>(null);
   const [feedbackFilter, setFeedbackFilter] = useState<'all' | 'unread' | 'bug' | 'feature'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'in_progress' | 'resolved' | 'rejected'>('all');
   const [backupDownloading, setBackupDownloading] = useState(false);
   const [restoreUploading, setRestoreUploading] = useState(false);
   const [restoreFile, setRestoreFile] = useState<File | null>(null);
@@ -642,10 +643,17 @@ const SuperAdmin: React.FC<Props> = ({ superAdminPassword, onExit }) => {
 
   const getFilteredFeedbacks = () => {
     return feedbacks.filter(f => {
-      if (feedbackFilter === 'unread') return !f.isRead;
-      if (feedbackFilter === 'bug') return f.type === 'bug';
-      if (feedbackFilter === 'feature') return f.type === 'feature';
-      return true;
+      // Type filter
+      let matchesType = true;
+      if (feedbackFilter === 'unread') matchesType = !f.isRead;
+      else if (feedbackFilter === 'bug') matchesType = f.type === 'bug';
+      else if (feedbackFilter === 'feature') matchesType = f.type === 'feature';
+
+      // Status filter
+      let matchesStatus = true;
+      if (statusFilter !== 'all') matchesStatus = f.status === statusFilter;
+
+      return matchesType && matchesStatus;
     });
   };
 
@@ -1125,8 +1133,8 @@ const SuperAdmin: React.FC<Props> = ({ superAdminPassword, onExit }) => {
         {/* Feedbacks Tab */}
         {tab === 'FEEDBACKS' && (
           <div>
-            {/* Filters */}
-            <div className="mb-6 flex gap-2">
+            {/* Type Filters */}
+            <div className="mb-4 flex gap-2 flex-wrap">
               <button
                 onClick={() => setFeedbackFilter('all')}
                 className={`px-4 py-2 rounded-lg font-medium text-sm ${
@@ -1167,6 +1175,25 @@ const SuperAdmin: React.FC<Props> = ({ superAdminPassword, onExit }) => {
               >
                 Features ({feedbacks.filter(f => f.type === 'feature').length})
               </button>
+            </div>
+
+            {/* Status Filters */}
+            <div className="mb-6 flex gap-2 flex-wrap items-center">
+              <span className="text-sm text-slate-500 mr-2">Status:</span>
+              {(['all', 'pending', 'in_progress', 'resolved', 'rejected'] as const).map((status) => (
+                <button
+                  key={status}
+                  onClick={() => setStatusFilter(status)}
+                  className={`px-3 py-1.5 rounded-lg font-medium text-xs ${
+                    statusFilter === status
+                      ? 'bg-slate-700 text-white'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  {status === 'all' ? 'All' : status === 'in_progress' ? 'In Progress' : status.charAt(0).toUpperCase() + status.slice(1)}
+                  {' '}({feedbacks.filter(f => status === 'all' || f.status === status).length})
+                </button>
+              ))}
             </div>
 
             {/* Feedbacks List */}
