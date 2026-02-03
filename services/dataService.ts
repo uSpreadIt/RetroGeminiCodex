@@ -584,12 +584,10 @@ export const dataService = {
         return null;
       }
 
-      const { team } = await res.json();
+      const { team, password } = await res.json();
       if (!team.archivedMembers) team.archivedMembers = [];
-      // Set auth without password (we use session token for restore)
-      authenticatedTeamId = team.id;
-      authenticatedTeam = team;
-      authenticatedSessionToken = sessionToken;
+      // Set auth with password (needed for creating invite links)
+      setAuthCredentials(team.id, password, team, sessionToken);
       return team;
     } catch {
       return null;

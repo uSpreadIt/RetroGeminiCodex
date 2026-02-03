@@ -1058,7 +1058,8 @@ app.post('/api/team/restore-session', authLimiter, async (req, res) => {
 
     res.json({
       team: sanitizeTeamForClient(team),
-      meta: currentData.meta
+      meta: currentData.meta,
+      password: team.passwordHash // Needed for creating invite links
     });
   } catch (err) {
     console.error('[Server] Failed to restore session', err);
