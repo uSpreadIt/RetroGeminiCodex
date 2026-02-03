@@ -23,6 +23,7 @@ const SuperAdmin: React.FC<Props> = ({ superAdminPassword, onExit }) => {
   const [successMessage, setSuccessMessage] = useState('');
   const [selectedFeedback, setSelectedFeedback] = useState<TeamFeedback | null>(null);
   const [feedbackFilter, setFeedbackFilter] = useState<'all' | 'unread' | 'bug' | 'feature'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'in_progress' | 'resolved' | 'rejected'>('all');
   const [backupDownloading, setBackupDownloading] = useState(false);
   const [restoreUploading, setRestoreUploading] = useState(false);
   const [restoreFile, setRestoreFile] = useState<File | null>(null);
@@ -535,12 +536,32 @@ const SuperAdmin: React.FC<Props> = ({ superAdminPassword, onExit }) => {
     updateFeedback(feedback, { status });
   };
 
-  const handleUpdateAdminNotes = (feedback: TeamFeedback, notes: string) => {
-    updateFeedback(feedback, { adminNotes: notes }).then(() => {
-      setSelectedFeedback(null);
-      setSuccessMessage('Notes updated successfully');
-      setTimeout(() => setSuccessMessage(''), 3000);
-    });
+  const handleAddAdminComment = async (feedback: TeamFeedback, content: string) => {
+    if (!content.trim()) return;
+
+    try {
+      const response = await fetch('/api/super-admin/feedbacks/comment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          password: superAdminPassword,
+          teamId: feedback.teamId,
+          feedbackId: feedback.id,
+          content: content.trim()
+        })
+      });
+
+      if (response.ok) {
+        setSelectedFeedback(null);
+        setSuccessMessage('Comment added successfully');
+        setTimeout(() => setSuccessMessage(''), 3000);
+        loadFeedbacks(); // Reload to show new comment
+      } else {
+        setError('Failed to add comment');
+      }
+    } catch (err) {
+      setError('Failed to add comment');
+    }
   };
 
   const extractFilenameFromHeader = (header: string | null) => {
@@ -642,10 +663,17 @@ const SuperAdmin: React.FC<Props> = ({ superAdminPassword, onExit }) => {
 
   const getFilteredFeedbacks = () => {
     return feedbacks.filter(f => {
-      if (feedbackFilter === 'unread') return !f.isRead;
-      if (feedbackFilter === 'bug') return f.type === 'bug';
-      if (feedbackFilter === 'feature') return f.type === 'feature';
-      return true;
+      // Type filter
+      let matchesType = true;
+      if (feedbackFilter === 'unread') matchesType = !f.isRead;
+      else if (feedbackFilter === 'bug') matchesType = f.type === 'bug';
+      else if (feedbackFilter === 'feature') matchesType = f.type === 'feature';
+
+      // Status filter
+      let matchesStatus = true;
+      if (statusFilter !== 'all') matchesStatus = f.status === statusFilter;
+
+      return matchesType && matchesStatus;
     });
   };
 
@@ -1125,8 +1153,8 @@ const SuperAdmin: React.FC<Props> = ({ superAdminPassword, onExit }) => {
         {/* Feedbacks Tab */}
         {tab === 'FEEDBACKS' && (
           <div>
-            {/* Filters */}
-            <div className="mb-6 flex gap-2">
+            {/* Type Filters */}
+            <div className="mb-4 flex gap-2 flex-wrap">
               <button
                 onClick={() => setFeedbackFilter('all')}
                 className={`px-4 py-2 rounded-lg font-medium text-sm ${
@@ -1167,6 +1195,25 @@ const SuperAdmin: React.FC<Props> = ({ superAdminPassword, onExit }) => {
               >
                 Features ({feedbacks.filter(f => f.type === 'feature').length})
               </button>
+            </div>
+
+            {/* Status Filters */}
+            <div className="mb-6 flex gap-2 flex-wrap items-center">
+              <span className="text-sm text-slate-500 mr-2">Status:</span>
+              {(['all', 'pending', 'in_progress', 'resolved', 'rejected'] as const).map((status) => (
+                <button
+                  key={status}
+                  onClick={() => setStatusFilter(status)}
+                  className={`px-3 py-1.5 rounded-lg font-medium text-xs ${
+                    statusFilter === status
+                      ? 'bg-slate-700 text-white'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  {status === 'all' ? 'All' : status === 'in_progress' ? 'In Progress' : status.charAt(0).toUpperCase() + status.slice(1)}
+                  {' '}({feedbacks.filter(f => status === 'all' || f.status === status).length})
+                </button>
+              ))}
             </div>
 
             {/* Feedbacks List */}
@@ -1218,10 +1265,29 @@ const SuperAdmin: React.FC<Props> = ({ superAdminPassword, onExit }) => {
                       Team: <span className="font-semibold">{feedback.teamName}</span>
                     </div>
 
-                    {feedback.adminNotes && (
-                      <div className="mb-3 p-3 bg-amber-50 border border-amber-200 rounded">
-                        <p className="text-sm font-medium text-amber-800 mb-1">Your notes:</p>
-                        <p className="text-sm text-amber-700">{feedback.adminNotes}</p>
+                    {/* Comments Section */}
+                    {feedback.comments && feedback.comments.length > 0 && (
+                      <div className="mb-3 space-y-2">
+                        <p className="text-sm font-medium text-slate-600">Comments ({feedback.comments.length}):</p>
+                        {feedback.comments.map((comment) => (
+                          <div key={comment.id} className={`p-3 rounded ${comment.isAdmin ? 'bg-amber-50 border border-amber-200' : 'bg-slate-50'}`}>
+                            <div className="text-sm">
+                              {comment.isAdmin && (
+                                <span className="material-symbols-outlined text-xs align-middle mr-1 text-amber-600">admin_panel_settings</span>
+                              )}
+                              <span className={`font-medium ${comment.isAdmin ? 'text-amber-800' : 'text-slate-800'}`}>{comment.authorName}</span>
+                              {!comment.isAdmin && (
+                                <>
+                                  <span className="text-slate-400"> · </span>
+                                  <span className="text-slate-500">{comment.teamName}</span>
+                                </>
+                              )}
+                              <span className="text-slate-400"> · </span>
+                              <span className="text-slate-400">{formatDate(comment.createdAt)}</span>
+                            </div>
+                            <p className={`text-sm mt-1 ${comment.isAdmin ? 'text-amber-700' : 'text-slate-700'}`}>{comment.content}</p>
+                          </div>
+                        ))}
                       </div>
                     )}
 
@@ -1253,7 +1319,7 @@ const SuperAdmin: React.FC<Props> = ({ superAdminPassword, onExit }) => {
                         onClick={() => setSelectedFeedback(feedback)}
                         className="px-3 py-1.5 bg-blue-100 text-blue-700 rounded text-sm font-medium hover:bg-blue-200"
                       >
-                        Add/Edit Notes
+                        Add Comment
                       </button>
 
                       <button
@@ -1515,30 +1581,31 @@ const SuperAdmin: React.FC<Props> = ({ superAdminPassword, onExit }) => {
           </div>
         )}
 
-        {/* Admin Notes Modal */}
+        {/* Add Comment Modal */}
         {selectedFeedback && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full p-6">
-              <h3 className="text-xl font-bold text-slate-800 mb-4">Admin Notes</h3>
+              <h3 className="text-xl font-bold text-slate-800 mb-4">Add Comment</h3>
               <p className="text-sm text-slate-600 mb-4">
                 Feedback: <span className="font-semibold">{selectedFeedback.title}</span>
               </p>
               <textarea
-                defaultValue={selectedFeedback.adminNotes || ''}
-                placeholder="Add your notes here..."
+                placeholder="Write your comment here..."
                 className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                rows={6}
-                id="admin-notes-input"
+                rows={4}
+                id="admin-comment-input"
+                maxLength={1000}
               />
+              <p className="text-xs text-slate-400 mt-1">Max 1000 characters</p>
               <div className="flex gap-3 mt-4">
                 <button
                   onClick={() => {
-                    const input = document.getElementById('admin-notes-input') as HTMLTextAreaElement;
-                    handleUpdateAdminNotes(selectedFeedback, input.value);
+                    const input = document.getElementById('admin-comment-input') as HTMLTextAreaElement;
+                    handleAddAdminComment(selectedFeedback, input.value);
                   }}
                   className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
                 >
-                  Save
+                  Add Comment
                 </button>
                 <button
                   onClick={() => setSelectedFeedback(null)}

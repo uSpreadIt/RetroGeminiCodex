@@ -91,6 +91,18 @@ export interface RetroSession {
   autoFinishedUsers?: string[]; // Tracks which users were auto-finished due to using all votes
 }
 
+export interface FeedbackComment {
+  id: string;
+  feedbackId: string;
+  teamId: string;
+  teamName: string;
+  authorId: string;
+  authorName: string;
+  content: string;
+  createdAt: string; // ISO date
+  isAdmin?: boolean; // true if comment is from super admin
+}
+
 export interface TeamFeedback {
   id: string;
   teamId: string;
@@ -104,7 +116,7 @@ export interface TeamFeedback {
   submittedAt: string; // ISO date
   isRead: boolean; // For unread indicator
   status: 'pending' | 'in_progress' | 'resolved' | 'rejected';
-  adminNotes?: string; // Notes from super admin
+  comments?: FeedbackComment[]; // Comments from teams and admins
 }
 
 export interface Team {

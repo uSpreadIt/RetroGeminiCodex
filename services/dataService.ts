@@ -1,5 +1,5 @@
 
-import { Team, TeamSummary, User, RetroSession, ActionItem, Column, Template, HealthCheckSession, HealthCheckTemplate, HealthCheckDimension, TeamFeedback } from '../types';
+import { Team, TeamSummary, User, RetroSession, ActionItem, Column, Template, HealthCheckSession, HealthCheckTemplate, HealthCheckDimension, TeamFeedback, FeedbackComment } from '../types';
 
 // ==================== SECURE API CLIENT ====================
 // Uses team-scoped endpoints that require authentication
@@ -1534,5 +1534,75 @@ export const dataService = {
    */
   setAuthFromInvite: (teamId: string, password: string, team: Team): void => {
     setAuthCredentials(teamId, password, team);
+  },
+
+  /**
+   * Get authenticated team password (for API calls from components)
+   */
+  getAuthenticatedPassword: (): string | null => {
+    return authenticatedTeamPassword;
+  },
+
+  /**
+   * Load all feedbacks from all teams
+   */
+  loadAllFeedbacks: async (): Promise<{ feedbacks: TeamFeedback[]; error: string | null }> => {
+    const { data, error } = await apiCall<{ feedbacks: TeamFeedback[] }>('/api/feedbacks/all', {
+      teamId: authenticatedTeamId
+    });
+    if (error || !data) {
+      return { feedbacks: [], error: error || 'Failed to load feedbacks' };
+    }
+    return { feedbacks: data.feedbacks, error: null };
+  },
+
+  /**
+   * Add a comment to a feedback
+   */
+  addFeedbackComment: async (
+    feedbackTeamId: string,
+    feedbackId: string,
+    authorId: string,
+    authorName: string,
+    content: string
+  ): Promise<{ comment: FeedbackComment | null; error: string | null }> => {
+    const { data, error } = await apiCall<{ success: boolean; comment: FeedbackComment }>(
+      '/api/feedbacks/comment',
+      {
+        teamId: authenticatedTeamId,
+        feedbackTeamId,
+        feedbackId,
+        authorId,
+        authorName,
+        content
+      }
+    );
+    if (error || !data) {
+      return { comment: null, error: error || 'Failed to add comment' };
+    }
+    return { comment: data.comment, error: null };
+  },
+
+  /**
+   * Delete a comment from a feedback
+   */
+  deleteFeedbackComment: async (
+    feedbackTeamId: string,
+    feedbackId: string,
+    commentId: string
+  ): Promise<{ success: boolean; error: string | null }> => {
+    const { data, error } = await apiCall<{ success: boolean }>(
+      '/api/feedbacks/comment/delete',
+      {
+        teamId: authenticatedTeamId,
+        feedbackTeamId,
+        feedbackId,
+        commentId
+      }
+    );
+    if (error || !data) {
+      return { success: false, error: error || 'Failed to delete comment' };
+    }
+    return { success: true, error: null };
   }
 };

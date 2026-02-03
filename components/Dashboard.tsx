@@ -1125,7 +1125,7 @@ const Dashboard: React.FC<Props> = ({ team, currentUser, onOpenSession, onOpenHe
             <span className="material-symbols-outlined mr-2">settings</span> Settings
         </button>
         <button onClick={() => setTab('FEEDBACK')} className={`dash-tab px-6 py-3 font-bold text-sm flex items-center transition whitespace-nowrap ${tab === 'FEEDBACK' ? 'active' : 'text-slate-500 hover:text-retro-primary'}`}>
-            <span className="material-symbols-outlined mr-2">feedback</span> Feedback
+            <span className="material-symbols-outlined mr-2">hub</span> Feedback Hub
         </button>
       </div>
 
@@ -2013,30 +2013,42 @@ const Dashboard: React.FC<Props> = ({ team, currentUser, onOpenSession, onOpenHe
         </div>
       )}
 
-      {/* Feedback Tab */}
+      {/* Feedback Hub Tab */}
       {tab === 'FEEDBACK' && (
         <TeamFeedback
           teamId={team.id}
           teamName={team.name}
+          teamPassword={dataService.getAuthenticatedPassword() || ''}
           currentUserId={currentUser.id}
           currentUserName={currentUser.name}
           feedbacks={team.teamFeedbacks || []}
-          onSubmitFeedback={(feedback) => {
-            const createdFeedback = dataService.createTeamFeedback(team.id, feedback);
-            onRefresh();
-            // Send notification email to admin (fire-and-forget)
-            fetch('/api/notify-new-feedback', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ feedback: createdFeedback })
-            }).catch(() => {
-              // Silently ignore notification failures - feedback was already saved
-            });
+          onSubmitFeedback={async (feedback) => {
+            // Create feedback via API to avoid sync issues
+            try {
+              const response = await fetch('/api/feedbacks/create', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  teamId: team.id,
+                  password: dataService.getAuthenticatedPassword(),
+                  feedback
+                })
+              });
+              if (response.ok) {
+                const data = await response.json();
+                onRefresh();
+                // Send notification email to admin (fire-and-forget)
+                fetch('/api/notify-new-feedback', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ feedback: data.feedback })
+                }).catch(() => {});
+              }
+            } catch (err) {
+              console.error('Failed to create feedback', err);
+            }
           }}
-          onDeleteFeedback={(feedbackId) => {
-            dataService.deleteTeamFeedback(team.id, feedbackId);
-            onRefresh();
-          }}
+          onRefresh={onRefresh}
         />
       )}
     </div>
