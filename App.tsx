@@ -132,70 +132,105 @@ const App: React.FC = () => {
     const params = new URLSearchParams(window.location.search);
     if (params.has('join')) return;
 
-    try {
-      const pathMatch = window.location.pathname.match(SESSION_PATH_REGEX);
-      const healthCheckPathMatch = window.location.pathname.match(HEALTH_CHECK_PATH_REGEX);
-      const sessionFromPath = pathMatch?.[1] || null;
-      const healthCheckFromPath = healthCheckPathMatch?.[1] || null;
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return;
-      const saved = JSON.parse(raw);
-      const team = dataService.getTeam(saved.teamId);
-      if (!team) return;
+    const restoreSession = async () => {
+      try {
+        const pathMatch = window.location.pathname.match(SESSION_PATH_REGEX);
+        const healthCheckPathMatch = window.location.pathname.match(HEALTH_CHECK_PATH_REGEX);
+        const sessionFromPath = pathMatch?.[1] || null;
+        const healthCheckFromPath = healthCheckPathMatch?.[1] || null;
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return;
+        const saved = JSON.parse(raw);
 
-      let user = team.members.find(m => m.id === saved.userId) || team.members.find(m => m.email && m.email === saved.userEmail);
-      if (!user && saved.userName) {
-        const participants = [
-          ...team.retrospectives.flatMap(r => r.participants || []),
-          ...(team.healthChecks || []).flatMap(h => h.participants || [])
-        ];
-        const found = participants.find(p => p.id === saved.userId || p.name === saved.userName);
-        if (found) {
-          dataService.persistParticipants(team.id, [found]);
-          user = found;
+        // Re-authenticate using saved password if available
+        let team = dataService.getTeam(saved.teamId);
+        if (!team && saved.password) {
+          try {
+            // Fetch team list to find team name by ID
+            const teamList = await dataService.listTeams();
+            const teamSummary = teamList.find(t => t.id === saved.teamId);
+            if (teamSummary) {
+              team = await dataService.loginTeam(teamSummary.name, saved.password);
+            }
+          } catch (loginErr) {
+            console.warn('Auto-login failed during session restore', loginErr);
+            localStorage.removeItem(STORAGE_KEY);
+            return;
+          }
         }
-      }
 
-      if (!user) return;
+        if (!team) return;
 
-      setCurrentTeam(team);
-      setCurrentUser(user);
+        let user = team.members.find(m => m.id === saved.userId) || team.members.find(m => m.email && m.email === saved.userEmail);
+        if (!user && saved.userName) {
+          const participants = [
+            ...team.retrospectives.flatMap(r => r.participants || []),
+            ...(team.healthChecks || []).flatMap(h => h.participants || [])
+          ];
+          const found = participants.find(p => p.id === saved.userId || p.name === saved.userName);
+          if (found) {
+            dataService.persistParticipants(team.id, [found]);
+            user = found;
+          }
+        }
 
-      // Check for health check path first
-      if (healthCheckFromPath) {
-        const hcExists = team.healthChecks?.some(h => h.id === healthCheckFromPath);
-        if (hcExists) {
-          setActiveHealthCheckId(healthCheckFromPath);
-          setView('HEALTH_CHECK');
+        if (!user) return;
+
+        setCurrentTeam(team);
+        setCurrentUser(user);
+
+        // Check for health check path first
+        if (healthCheckFromPath) {
+          const hcExists = team.healthChecks?.some(h => h.id === healthCheckFromPath);
+          if (hcExists) {
+            setActiveHealthCheckId(healthCheckFromPath);
+            setView('HEALTH_CHECK');
+            return;
+          } else {
+            window.history.replaceState({}, document.title, '/');
+          }
+        }
+
+        if (sessionFromPath) {
+          const sessionExists = team.retrospectives.some(r => r.id === sessionFromPath);
+          if (sessionExists) {
+            setActiveSessionId(sessionFromPath);
+            setView('SESSION');
+            return;
+          } else {
+            window.history.replaceState({}, document.title, '/');
+          }
+        } else if (saved.view === 'SESSION' && saved.activeSessionId) {
+          // Session was in URL but no longer there - check if session still exists
+          const sessionExists = team.retrospectives.some(r => r.id === saved.activeSessionId);
+          if (sessionExists) {
+            setActiveSessionId(saved.activeSessionId);
+            setView('SESSION');
+            return;
+          }
+          setView('DASHBOARD');
+          setActiveSessionId(null);
           return;
-        } else {
-          window.history.replaceState({}, document.title, '/');
-        }
-      }
-
-      if (sessionFromPath) {
-        const sessionExists = team.retrospectives.some(r => r.id === sessionFromPath);
-        if (sessionExists) {
-          setActiveSessionId(sessionFromPath);
-          setView('SESSION');
+        } else if (saved.view === 'HEALTH_CHECK' && saved.activeHealthCheckId) {
+          // Health check was in URL but no longer there - check if it still exists
+          const hcExists = team.healthChecks?.some(h => h.id === saved.activeHealthCheckId);
+          if (hcExists) {
+            setActiveHealthCheckId(saved.activeHealthCheckId);
+            setView('HEALTH_CHECK');
+            return;
+          }
+          setView('DASHBOARD');
+          setActiveHealthCheckId(null);
           return;
-        } else {
-          window.history.replaceState({}, document.title, '/');
         }
-      } else if (saved.view === 'SESSION' && saved.activeSessionId) {
-        setView('DASHBOARD');
-        setActiveSessionId(null);
-        return;
-      } else if (saved.view === 'HEALTH_CHECK' && saved.activeHealthCheckId) {
-        setView('DASHBOARD');
-        setActiveHealthCheckId(null);
-        return;
-      }
 
-      setView(saved.view || 'DASHBOARD');
-    } catch (err) {
-      console.warn('Unable to restore previous session', err);
-    }
+        setView(saved.view || 'DASHBOARD');
+      } catch (err) {
+        console.warn('Unable to restore previous session', err);
+      }
+    };
+
+    restoreSession();
   }, [hydrated, currentTeam]);
 
   useEffect(() => {
@@ -214,6 +249,7 @@ const App: React.FC = () => {
       view,
       activeSessionId,
       activeHealthCheckId,
+      password: dataService.getAuthenticatedPassword(),
     };
 
     localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
