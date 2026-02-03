@@ -142,15 +142,16 @@ const App: React.FC = () => {
         if (!raw) return;
         const saved = JSON.parse(raw);
 
-        // Re-authenticate using saved password if available
+        // Check if already authenticated
         let team = dataService.getTeam(saved.teamId);
-        if (!team && saved.password) {
+        if (!team) {
+          // Attempt re-authentication using saved credentials
+          // The actual password validation happens server-side in loginTeam
           try {
-            // Fetch team list to find team name by ID
             const teamList = await dataService.listTeams();
             const teamSummary = teamList.find(t => t.id === saved.teamId);
             if (teamSummary) {
-              team = await dataService.loginTeam(teamSummary.name, saved.password);
+              team = await dataService.loginTeam(teamSummary.name, saved.password ?? '');
             }
           } catch (loginErr) {
             console.warn('Auto-login failed during session restore', loginErr);
