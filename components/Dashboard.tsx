@@ -1257,8 +1257,13 @@ const Dashboard: React.FC<Props> = ({ team, currentUser, onOpenSession, onOpenHe
                                         target.style.height = 'auto';
                                         target.style.height = `${target.scrollHeight}px`;
                                     }}
+                                    onFocus={(e) => {
+                                        const target = e.currentTarget;
+                                        target.style.height = 'auto';
+                                        target.style.height = `${target.scrollHeight}px`;
+                                    }}
                                     rows={1}
-                                    className={`w-full bg-transparent border border-transparent hover:border-slate-300 rounded px-2 py-1 focus:bg-white focus:border-retro-primary outline-none transition font-medium resize-none whitespace-pre-wrap ${action.done ? 'line-through text-slate-400' : 'text-slate-700'}`}
+                                    className={`w-full overflow-hidden bg-transparent border border-transparent hover:border-slate-300 rounded px-2 py-1 focus:bg-white focus:border-retro-primary outline-none transition font-medium resize-none whitespace-pre-wrap ${action.done ? 'line-through text-slate-400' : 'text-slate-700'}`}
                                 />
                                 <div className="flex items-center text-xs mt-1">
                                     {action.originRetro !== 'Dashboard' && <span className="text-slate-400 px-1 bg-slate-100 rounded mr-2">{action.originRetro}</span>}
