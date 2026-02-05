@@ -46,16 +46,38 @@ const ReviewPhase: React.FC<Props> = ({
     ? session.historyActionsSnapshot.map((action) => action.id)
     : historyActionIds;
 
+  // Build a lookup from the synced session snapshot so participants see
+  // real-time changes made by the facilitator (done status, assignee).
+  const historySnapshotMap = new Map(
+    (session.historyActionsSnapshot || []).map(a => [a.id, a])
+  );
+
   const historySource = [
     ...currentTeam.globalActions
       .filter((action) => actionIds.includes(action.id))
-      .map((action) => ({ ...action, contextText: buildActionContext(action, currentTeam) })),
+      .map((action) => {
+        const snapshot = historySnapshotMap.get(action.id);
+        return {
+          ...action,
+          done: snapshot ? snapshot.done : action.done,
+          assigneeId: snapshot ? snapshot.assigneeId : action.assigneeId,
+          contextText: buildActionContext(action, currentTeam)
+        };
+      }),
     ...currentTeam.retrospectives
       .filter((retro) => retro.id !== session.id)
       .flatMap((retro) =>
         retro.actions
           .filter((action) => actionIds.includes(action.id) && action.type !== 'proposal')
-          .map((action) => ({ ...action, contextText: buildActionContext(action, currentTeam) }))
+          .map((action) => {
+            const snapshot = historySnapshotMap.get(action.id);
+            return {
+              ...action,
+              done: snapshot ? snapshot.done : action.done,
+              assigneeId: snapshot ? snapshot.assigneeId : action.assigneeId,
+              contextText: buildActionContext(action, currentTeam)
+            };
+          })
       )
   ];
 
