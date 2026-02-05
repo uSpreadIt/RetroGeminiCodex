@@ -1224,11 +1224,12 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
             }}
             className={`p-3 rounded shadow-sm border group relative mb-2 transition-all
                 ${mode === 'GROUP' ? 'cursor-grab active:cursor-grabbing' : ''}
-                ${isDragTarget ? 'ring-4 ring-indigo-300 border-indigo-500 z-20 scale-105' : isSelected ? 'ring-4 ring-blue-400 border-blue-500 bg-blue-50 shadow-lg z-10' : !cardBgHex ? 'bg-white border-slate-200' : ''}
+                ${isDragTarget ? 'ring-4 ring-indigo-400 border-indigo-500 z-20' : isSelected ? 'ring-4 ring-blue-400 border-blue-500 shadow-lg z-10' : ''}
+                ${!cardBgHex ? 'bg-white border-slate-200' : ''}
             `}
-            style={cardBgHex && !isDragTarget && !isSelected ? {
+            style={cardBgHex ? {
                 backgroundColor: cardBgHex,
-                borderColor: cardBgHex,
+                borderColor: isDragTarget ? undefined : isSelected ? undefined : cardBgHex,
                 borderWidth: '2px'
             } : undefined}
         >
