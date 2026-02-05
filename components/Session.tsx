@@ -1233,14 +1233,14 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
             } : undefined}
         >
             {isDragTarget && (
-                <div className="absolute inset-0 bg-indigo-50/90 flex items-center justify-center rounded z-10 font-bold text-indigo-700 pointer-events-none">
-                    <span className="material-symbols-outlined mr-1">merge</span> Group with this
+                <div className="absolute top-0 left-0 right-0 bg-indigo-500/90 flex items-center justify-center rounded-t z-10 font-bold text-white text-xs py-1 pointer-events-none">
+                    <span className="material-symbols-outlined text-sm mr-1">merge</span> Group with this
                 </div>
             )}
 
             {isSelected && (
-                <div className="absolute inset-0 bg-blue-100/50 flex items-center justify-center rounded z-10 font-bold text-blue-700 pointer-events-none border-2 border-blue-500">
-                    <span className="material-symbols-outlined mr-1">touch_app</span> Selected - Tap to cancel
+                <div className="absolute top-0 left-0 right-0 bg-blue-500/90 flex items-center justify-center rounded-t z-10 font-bold text-white text-xs py-1 pointer-events-none">
+                    <span className="material-symbols-outlined text-sm mr-1">touch_app</span> Selected - Tap to cancel
                 </div>
             )}
 

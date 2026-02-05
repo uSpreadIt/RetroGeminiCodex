@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { RetroSession, User } from '../../types';
 
 interface DiscussItem {
@@ -35,6 +35,65 @@ interface Props {
   handleDirectAddAction: (topicId: string) => void;
   setPhase: (phase: string) => void;
 }
+
+const VoteStatusTooltip: React.FC<{ proposalVotes: Record<string, 'up' | 'down' | 'neutral'>; participants: User[]; totalVotes: number }> = ({ proposalVotes, participants, totalVotes }) => {
+  const [visible, setVisible] = useState(false);
+  const voters = Object.keys(proposalVotes);
+  const votedParticipants = participants.filter((p) => voters.includes(p.id));
+  const notVotedParticipants = participants.filter((p) => !voters.includes(p.id));
+
+  return (
+    <div className="relative" onMouseEnter={() => setVisible(true)} onMouseLeave={() => setVisible(false)}>
+      <div className="text-[11px] font-bold text-slate-500 px-2 py-1 bg-slate-100 rounded cursor-help">
+        Total: {totalVotes}
+      </div>
+      {visible && (
+        <div className="absolute bottom-full right-0 mb-2 w-56 bg-white border border-slate-200 rounded-lg shadow-lg z-50 p-3 text-xs">
+          <div className="mb-2">
+            <div className="font-bold text-emerald-700 mb-1 flex items-center">
+              <span className="material-symbols-outlined text-xs mr-1">check_circle</span>
+              Voted ({votedParticipants.length})
+            </div>
+            {votedParticipants.length > 0 ? (
+              <ul className="ml-4 text-slate-600 space-y-0.5">
+                {votedParticipants.map((p) => (
+                  <li key={p.id} className="flex items-center">
+                    <span className={`w-2 h-2 rounded-full ${p.color} mr-1.5 shrink-0`}></span>
+                    <span className="truncate">{p.name}</span>
+                    <span className="ml-auto text-[10px] text-slate-400">
+                      {proposalVotes[p.id] === 'up' ? '👍' : proposalVotes[p.id] === 'down' ? '👎' : '➖'}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div className="ml-4 text-slate-400 italic">No one yet</div>
+            )}
+          </div>
+          <div>
+            <div className="font-bold text-amber-600 mb-1 flex items-center">
+              <span className="material-symbols-outlined text-xs mr-1">pending</span>
+              Not voted ({notVotedParticipants.length})
+            </div>
+            {notVotedParticipants.length > 0 ? (
+              <ul className="ml-4 text-slate-600 space-y-0.5">
+                {notVotedParticipants.map((p) => (
+                  <li key={p.id} className="flex items-center">
+                    <span className={`w-2 h-2 rounded-full ${p.color} mr-1.5 shrink-0`}></span>
+                    <span className="truncate">{p.name}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div className="ml-4 text-slate-400 italic">Everyone voted</div>
+            )}
+          </div>
+          <div className="absolute bottom-0 right-4 translate-y-full w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-[6px] border-t-slate-200"></div>
+        </div>
+      )}
+    </div>
+  );
+};
 
 const DiscussPhase: React.FC<Props> = ({
   session,
@@ -238,9 +297,11 @@ const DiscussPhase: React.FC<Props> = ({
                                     <span className="text-xs font-bold">{downVotes > 0 ? downVotes : ''}</span>
                                   </button>
                                 </div>
-                                <div className="text-[11px] font-bold text-slate-500 px-2 py-1 bg-slate-100 rounded">
-                                  Total: {totalVotes}
-                                </div>
+                                <VoteStatusTooltip
+                                  proposalVotes={proposal.proposalVotes || {}}
+                                  participants={session.participants || []}
+                                  totalVotes={totalVotes}
+                                />
                                 {isFacilitator && (
                                   <button
                                     onClick={() => handleAcceptProposal(proposal.id)}
