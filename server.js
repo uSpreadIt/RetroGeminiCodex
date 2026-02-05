@@ -2831,10 +2831,17 @@ Log in to the Super Admin Dashboard to review and respond to this feedback.
   }
 });
 
-// Super admin endpoint to get active sessions (live monitoring)
-app.post('/api/super-admin/active-sessions', superAdminActionLimiter, async (req, res) => {
-  const { password } = req.body || {};
+// Dedicated rate limiter for live-session polling (more lenient than action limiter)
+const superAdminPollingLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  message: { error: 'too_many_attempts', retryAfter: '1 minute' },
+  standardHeaders: true,
+  legacyHeaders: false
+});
 
+// Super admin endpoint to get active sessions (live monitoring)
+app.post('/api/super-admin/active-sessions', superAdminPollingLimiter, async (req, res) => {
   if (!validateSuperAdminAuth(req.body)) {
     return res.status(401).json({ error: 'unauthorized' });
   }
@@ -2842,28 +2849,24 @@ app.post('/api/super-admin/active-sessions', superAdminActionLimiter, async (req
   try {
     const activeSessions = [];
 
-    // Get all rooms (session IDs) with connected clients
-    const rooms = io.sockets.adapter.rooms;
+    // Use fetchSockets() to discover sockets across ALL pods (works with
+    // Redis / PostgreSQL adapters).  io.sockets.adapter.rooms only returns
+    // rooms local to the current pod, so a session running on another pod
+    // would be invisible.
+    const allSockets = await io.fetchSockets();
 
-    for (const [roomId, socketIds] of rooms.entries()) {
-      // Skip socket.io internal rooms (they start with socket id)
-      if (socketIds.has(roomId)) continue;
-
-      // Get participants in this room
-      const participants = [];
-      for (const socketId of socketIds) {
-        const socket = io.sockets.sockets.get(socketId);
-        if (socket && socket.data.userId && socket.data.userName) {
-          participants.push({
-            id: socket.data.userId,
-            name: socket.data.userName
-          });
-        }
+    // Group sockets by session room (skip each socket's personal room)
+    const sessionRooms = new Map();
+    for (const s of allSockets) {
+      if (!s.data.userId || !s.data.userName) continue;
+      for (const room of s.rooms) {
+        if (room === s.id) continue; // personal room
+        if (!sessionRooms.has(room)) sessionRooms.set(room, []);
+        sessionRooms.get(room).push({ id: s.data.userId, name: s.data.userName });
       }
+    }
 
-      // Skip empty rooms
-      if (participants.length === 0) continue;
-
+    for (const [roomId, participants] of sessionRooms.entries()) {
       // Try to get session data from cache or database
       let sessionData = sessions.get(roomId);
       if (!sessionData) {
@@ -2891,7 +2894,7 @@ app.post('/api/super-admin/active-sessions', superAdminActionLimiter, async (req
         phase: sessionData?.phase || 'Unknown',
         status: sessionData?.status || 'IN_PROGRESS',
         participants,
-        connectedCount: socketIds.size
+        connectedCount: participants.length
       };
 
       activeSessions.push(sessionInfo);

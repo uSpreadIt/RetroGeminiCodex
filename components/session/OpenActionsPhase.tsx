@@ -31,12 +31,26 @@ const OpenActionsPhase: React.FC<Props> = ({
     ? session.openActionsSnapshot.map((action) => action.id)
     : reviewActionIds;
 
+  // Build a lookup from the synced session snapshot so participants see
+  // real-time changes made by the facilitator (done status, assignee).
+  const snapshotMap = new Map(
+    (session.openActionsSnapshot || []).map(a => [a.id, a])
+  );
+
   const actionsFromTeam = [
     ...currentTeam.globalActions.filter((action) => actionIds.includes(action.id)),
     ...currentTeam.retrospectives.flatMap((retro) =>
       retro.actions.filter((action) => actionIds.includes(action.id) && action.type !== 'proposal')
     )
-  ].map((action) => ({ ...action, contextText: buildActionContext(action, currentTeam) }));
+  ].map((action) => {
+    const snapshot = snapshotMap.get(action.id);
+    return {
+      ...action,
+      done: snapshot ? snapshot.done : action.done,
+      assigneeId: snapshot ? snapshot.assigneeId : action.assigneeId,
+      contextText: buildActionContext(action, currentTeam)
+    };
+  });
 
   const uniqueActions = Array.from(new Map(actionsFromTeam.map((item) => [item.id, item])).values());
 

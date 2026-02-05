@@ -1020,9 +1020,9 @@ export const dataService = {
       throw new Error('Failed to join team - invalid invite link');
     }
 
-    const { team } = await res.json();
+    const { team, sessionToken } = await res.json();
     if (!team.archivedMembers) team.archivedMembers = [];
-    setAuthCredentials(team.id, inviteData.password, team);
+    setAuthCredentials(team.id, inviteData.password, team, sessionToken);
 
     return team;
   },
