@@ -2831,10 +2831,17 @@ Log in to the Super Admin Dashboard to review and respond to this feedback.
   }
 });
 
-// Super admin endpoint to get active sessions (live monitoring)
-app.post('/api/super-admin/active-sessions', superAdminActionLimiter, async (req, res) => {
-  const { password } = req.body || {};
+// Dedicated rate limiter for live-session polling (more lenient than action limiter)
+const superAdminPollingLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  message: { error: 'too_many_attempts', retryAfter: '1 minute' },
+  standardHeaders: true,
+  legacyHeaders: false
+});
 
+// Super admin endpoint to get active sessions (live monitoring)
+app.post('/api/super-admin/active-sessions', superAdminPollingLimiter, async (req, res) => {
   if (!validateSuperAdminAuth(req.body)) {
     return res.status(401).json({ error: 'unauthorized' });
   }
@@ -2845,21 +2852,31 @@ app.post('/api/super-admin/active-sessions', superAdminActionLimiter, async (req
     // Get all rooms (session IDs) with connected clients
     const rooms = io.sockets.adapter.rooms;
 
+    // Collect non-personal room IDs (session rooms)
+    const sessionRoomIds = [];
     for (const [roomId, socketIds] of rooms.entries()) {
-      // Skip socket.io internal rooms (they start with socket id)
+      // Skip socket.io internal rooms (room name equals a socket id in the set)
       if (socketIds.has(roomId)) continue;
+      sessionRoomIds.push(roomId);
+    }
 
-      // Get participants in this room
-      const participants = [];
-      for (const socketId of socketIds) {
-        const socket = io.sockets.sockets.get(socketId);
-        if (socket && socket.data.userId && socket.data.userName) {
-          participants.push({
-            id: socket.data.userId,
-            name: socket.data.userName
-          });
+    for (const roomId of sessionRoomIds) {
+      // Use fetchSockets for multi-pod support (works with Redis/PostgreSQL adapters)
+      let socketsInRoom;
+      try {
+        socketsInRoom = await io.in(roomId).fetchSockets();
+      } catch {
+        // Fallback to local sockets if fetchSockets is unavailable
+        socketsInRoom = [];
+        for (const s of io.sockets.sockets.values()) {
+          if (s.rooms.has(roomId)) socketsInRoom.push(s);
         }
       }
+
+      // Get participants in this room
+      const participants = socketsInRoom
+        .filter(s => s.data.userId && s.data.userName)
+        .map(s => ({ id: s.data.userId, name: s.data.userName }));
 
       // Skip empty rooms
       if (participants.length === 0) continue;
@@ -2891,7 +2908,7 @@ app.post('/api/super-admin/active-sessions', superAdminActionLimiter, async (req
         phase: sessionData?.phase || 'Unknown',
         status: sessionData?.status || 'IN_PROGRESS',
         participants,
-        connectedCount: socketIds.size
+        connectedCount: participants.length
       };
 
       activeSessions.push(sessionInfo);
