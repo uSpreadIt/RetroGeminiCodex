@@ -892,6 +892,25 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
       setDraggedTicket(ticket);
       setIsTouchDragging(false);
       e.dataTransfer.effectAllowed = 'move';
+
+      // Create a fully opaque drag image (browsers make the default ghost semi-transparent)
+      const cardEl = e.currentTarget as HTMLElement;
+      const clone = cardEl.cloneNode(true) as HTMLElement;
+      clone.style.opacity = '1';
+      clone.style.transform = 'none';
+      clone.style.position = 'absolute';
+      clone.style.top = '-9999px';
+      clone.style.left = '-9999px';
+      clone.style.width = `${cardEl.offsetWidth}px`;
+      clone.style.pointerEvents = 'none';
+      clone.style.zIndex = '9999';
+      document.body.appendChild(clone);
+      e.dataTransfer.setDragImage(clone, cardEl.offsetWidth / 2, 20);
+      // Clean up the clone after the drag starts
+      requestAnimationFrame(() => {
+          document.body.removeChild(clone);
+      });
+
       e.stopPropagation();
   };
 
@@ -1224,23 +1243,24 @@ const Session: React.FC<Props> = ({ team, currentUser, sessionId, onExit, onTeam
             }}
             className={`p-3 rounded shadow-sm border group relative mb-2 transition-all
                 ${mode === 'GROUP' ? 'cursor-grab active:cursor-grabbing' : ''}
-                ${isDragTarget ? 'ring-4 ring-indigo-300 border-indigo-500 z-20 scale-105' : isSelected ? 'ring-4 ring-blue-400 border-blue-500 bg-blue-50 shadow-lg z-10' : !cardBgHex ? 'bg-white border-slate-200' : ''}
+                ${isDragTarget ? 'ring-4 ring-indigo-400 border-indigo-500 z-20' : isSelected ? 'ring-4 ring-blue-400 border-blue-500 shadow-lg z-10' : ''}
+                ${!cardBgHex ? 'bg-white border-slate-200' : ''}
             `}
-            style={cardBgHex && !isDragTarget && !isSelected ? {
+            style={cardBgHex ? {
                 backgroundColor: cardBgHex,
-                borderColor: cardBgHex,
+                borderColor: isDragTarget ? undefined : isSelected ? undefined : cardBgHex,
                 borderWidth: '2px'
             } : undefined}
         >
             {isDragTarget && (
-                <div className="absolute inset-0 bg-indigo-50/90 flex items-center justify-center rounded z-10 font-bold text-indigo-700 pointer-events-none">
-                    <span className="material-symbols-outlined mr-1">merge</span> Group with this
+                <div className="-mx-3 -mt-3 mb-2 bg-indigo-500 flex items-center justify-center rounded-t font-bold text-white text-xs py-1 pointer-events-none">
+                    <span className="material-symbols-outlined text-sm mr-1">merge</span> Group with this
                 </div>
             )}
 
             {isSelected && (
-                <div className="absolute inset-0 bg-blue-100/50 flex items-center justify-center rounded z-10 font-bold text-blue-700 pointer-events-none border-2 border-blue-500">
-                    <span className="material-symbols-outlined mr-1">touch_app</span> Selected - Tap to cancel
+                <div className="-mx-3 -mt-3 mb-2 bg-blue-500 flex items-center justify-center rounded-t font-bold text-white text-xs py-1 pointer-events-none">
+                    <span className="material-symbols-outlined text-sm mr-1">touch_app</span> Selected - Tap to cancel
                 </div>
             )}
 

@@ -570,6 +570,10 @@ const normalizePersistedData = (data) => {
     normalized.resetTokens = [];
   }
 
+  if (!Array.isArray(normalized.orphanedFeedbacks)) {
+    normalized.orphanedFeedbacks = [];
+  }
+
   return normalized;
 };
 
@@ -1440,6 +1444,20 @@ app.post('/api/team/:teamId/delete', teamWriteLimiter, async (req, res) => {
         return res.status(404).json({ error: 'team_not_found' });
       }
 
+      // Preserve feedbacks from the deleted team
+      const deletedTeam = currentData.teams[idx];
+      if (deletedTeam.teamFeedbacks && deletedTeam.teamFeedbacks.length > 0) {
+        if (!Array.isArray(currentData.orphanedFeedbacks)) {
+          currentData.orphanedFeedbacks = [];
+        }
+        const feedbacksToPreserve = deletedTeam.teamFeedbacks.map(f => ({
+          ...f,
+          teamId: f.teamId || deletedTeam.id,
+          teamName: f.teamName || deletedTeam.name
+        }));
+        currentData.orphanedFeedbacks.push(...feedbacksToPreserve);
+      }
+
       currentData.teams.splice(idx, 1);
       const revision = Number(currentData.meta?.revision ?? 0);
       const result = await atomicSavePersistedData(currentData, revision);
@@ -1688,6 +1706,14 @@ app.post('/api/feedbacks/all', teamReadLimiter, async (req, res) => {
         comments: feedback.comments || []
       }))
     );
+    // Include orphaned feedbacks from deleted teams
+    const orphaned = (currentData.orphanedFeedbacks || []).map((feedback) => ({
+      ...feedback,
+      isRead: feedback.isRead ?? false,
+      status: feedback.status || 'pending',
+      comments: feedback.comments || []
+    }));
+    feedbacks.push(...orphaned);
     feedbacks.sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
     res.json({ feedbacks });
   } catch (err) {
@@ -1731,9 +1757,16 @@ app.post('/api/feedbacks/comment', teamWriteLimiter, async (req, res) => {
     let feedbackType = null;
 
     await atomicReadModifyWrite((data) => {
+      // Check in team feedbacks first
       const feedbackTeam = data.teams.find(t => t.id === feedbackTeamId);
-      if (!feedbackTeam || !feedbackTeam.teamFeedbacks) return null;
-      const feedback = feedbackTeam.teamFeedbacks.find(f => f.id === feedbackId);
+      let feedback = null;
+      if (feedbackTeam && feedbackTeam.teamFeedbacks) {
+        feedback = feedbackTeam.teamFeedbacks.find(f => f.id === feedbackId);
+      }
+      // Fall back to orphaned feedbacks from deleted teams
+      if (!feedback && Array.isArray(data.orphanedFeedbacks)) {
+        feedback = data.orphanedFeedbacks.find(f => f.id === feedbackId);
+      }
       if (!feedback) return null;
 
       feedbackTitle = feedback.title;
@@ -1820,9 +1853,16 @@ app.post('/api/feedbacks/comment/delete', teamWriteLimiter, async (req, res) => 
     }
 
     await atomicReadModifyWrite((data) => {
+      // Check in team feedbacks first
       const feedbackTeam = data.teams.find(t => t.id === feedbackTeamId);
-      if (!feedbackTeam || !feedbackTeam.teamFeedbacks) return null;
-      const feedback = feedbackTeam.teamFeedbacks.find(f => f.id === feedbackId);
+      let feedback = null;
+      if (feedbackTeam && feedbackTeam.teamFeedbacks) {
+        feedback = feedbackTeam.teamFeedbacks.find(f => f.id === feedbackId);
+      }
+      // Fall back to orphaned feedbacks from deleted teams
+      if (!feedback && Array.isArray(data.orphanedFeedbacks)) {
+        feedback = data.orphanedFeedbacks.find(f => f.id === feedbackId);
+      }
       if (!feedback || !feedback.comments) return null;
 
       // Find the comment and verify ownership
@@ -2195,6 +2235,13 @@ app.post('/api/super-admin/feedbacks', superAdminActionLimiter, (req, res) => {
           status: feedback.status || 'pending'
         }))
       );
+      // Include orphaned feedbacks from deleted teams
+      const orphaned = (currentData.orphanedFeedbacks || []).map((feedback) => ({
+        ...feedback,
+        isRead: feedback.isRead ?? false,
+        status: feedback.status || 'pending'
+      }));
+      feedbacks.push(...orphaned);
       feedbacks.sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
       res.json({ feedbacks });
     })
@@ -2250,9 +2297,16 @@ app.post('/api/super-admin/feedbacks/update', superAdminActionLimiter, async (re
     let teamName = null;
 
     await atomicReadModifyWrite((data) => {
+      // Check in team feedbacks first
       const team = data.teams.find(t => t.id === teamId);
-      if (!team || !team.teamFeedbacks) return null;
-      const feedback = team.teamFeedbacks.find(f => f.id === feedbackId);
+      let feedback = null;
+      if (team && team.teamFeedbacks) {
+        feedback = team.teamFeedbacks.find(f => f.id === feedbackId);
+      }
+      // Fall back to orphaned feedbacks from deleted teams
+      if (!feedback && Array.isArray(data.orphanedFeedbacks)) {
+        feedback = data.orphanedFeedbacks.find(f => f.id === feedbackId);
+      }
       if (!feedback) return null;
 
       // Check if status is changing
@@ -2262,16 +2316,16 @@ app.post('/api/super-admin/feedbacks/update', superAdminActionLimiter, async (re
         newStatus = updates.status;
         feedbackTitle = feedback.title;
         feedbackType = feedback.type;
-        teamEmail = team.facilitatorEmail;
-        teamName = team.name;
+        teamEmail = team ? team.facilitatorEmail : undefined;
+        teamName = team ? team.name : feedback.teamName;
       }
 
       Object.assign(feedback, updates);
       if (!feedback.teamName) {
-        feedback.teamName = team.name;
+        feedback.teamName = team ? team.name : 'Deleted Team';
       }
       if (!feedback.teamId) {
-        feedback.teamId = team.id;
+        feedback.teamId = team ? team.id : teamId;
       }
       return data;
     });
@@ -2364,19 +2418,32 @@ app.post('/api/super-admin/feedbacks/delete', superAdminActionLimiter, async (re
     let teamName = null;
 
     await atomicReadModifyWrite((data) => {
+      // Check in team feedbacks first
       const team = data.teams.find(t => t.id === teamId);
-      if (!team || !team.teamFeedbacks) return null;
-
-      // Get feedback info before deleting
-      const feedback = team.teamFeedbacks.find(f => f.id === feedbackId);
-      if (feedback) {
-        feedbackTitle = feedback.title;
-        feedbackType = feedback.type;
-        teamEmail = team.facilitatorEmail;
-        teamName = team.name;
+      let found = false;
+      if (team && team.teamFeedbacks) {
+        const feedback = team.teamFeedbacks.find(f => f.id === feedbackId);
+        if (feedback) {
+          found = true;
+          feedbackTitle = feedback.title;
+          feedbackType = feedback.type;
+          teamEmail = team.facilitatorEmail;
+          teamName = team.name;
+          team.teamFeedbacks = team.teamFeedbacks.filter(f => f.id !== feedbackId);
+        }
       }
-
-      team.teamFeedbacks = team.teamFeedbacks.filter(f => f.id !== feedbackId);
+      // Fall back to orphaned feedbacks from deleted teams
+      if (!found && Array.isArray(data.orphanedFeedbacks)) {
+        const feedback = data.orphanedFeedbacks.find(f => f.id === feedbackId);
+        if (feedback) {
+          feedbackTitle = feedback.title;
+          feedbackType = feedback.type;
+          teamName = feedback.teamName;
+          data.orphanedFeedbacks = data.orphanedFeedbacks.filter(f => f.id !== feedbackId);
+          found = true;
+        }
+      }
+      if (!found) return null;
       return data;
     });
 
@@ -2456,15 +2523,22 @@ app.post('/api/super-admin/feedbacks/comment', superAdminActionLimiter, async (r
     };
 
     await atomicReadModifyWrite((data) => {
+      // Check in team feedbacks first
       const team = data.teams.find(t => t.id === teamId);
-      if (!team || !team.teamFeedbacks) return null;
-      const feedback = team.teamFeedbacks.find(f => f.id === feedbackId);
+      let feedback = null;
+      if (team && team.teamFeedbacks) {
+        feedback = team.teamFeedbacks.find(f => f.id === feedbackId);
+      }
+      // Fall back to orphaned feedbacks from deleted teams
+      if (!feedback && Array.isArray(data.orphanedFeedbacks)) {
+        feedback = data.orphanedFeedbacks.find(f => f.id === feedbackId);
+      }
       if (!feedback) return null;
 
       feedbackTitle = feedback.title;
       feedbackType = feedback.type;
-      teamEmail = team.facilitatorEmail;
-      teamName = team.name;
+      teamEmail = team ? team.facilitatorEmail : undefined;
+      teamName = team ? team.name : feedback.teamName;
 
       if (!feedback.comments) {
         feedback.comments = [];

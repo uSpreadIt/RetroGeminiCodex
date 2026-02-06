@@ -252,6 +252,22 @@ npm run ci           # lint + type-check + test + build
 | `/health` | GET | Health check |
 | `/ready` | GET | Readiness check |
 
+## Data Persistence Structure
+
+The application stores all data in a single KV store record with key `retro-data`. The top-level structure is:
+
+```json
+{
+  "teams": [],
+  "meta": { "revision": 0, "updatedAt": "..." },
+  "resetTokens": [],
+  "orphanedFeedbacks": []
+}
+```
+
+- **teams**: Array of `Team` objects (see `types.ts`)
+- **orphanedFeedbacks**: Array of `TeamFeedback` objects preserved from deleted teams. When a team is deleted, its feedbacks are moved here so bug reports and feature requests are never lost. All feedback endpoints (loading, commenting, updating, deleting) check both `team.teamFeedbacks` and `orphanedFeedbacks`.
+
 ## Real-time Events (Socket.IO)
 
 | Event | Direction | Description |

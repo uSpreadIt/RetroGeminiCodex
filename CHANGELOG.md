@@ -5,6 +5,13 @@ All notable changes to RetroGemini will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 Version follows `X.Y` format where X increments for new features and Y for bug fixes.
 
+## [7.0] - 2026-02-05
+
+### Added
+- See who voted and who hasn't on each proposal action with a tooltip showing participant voting status
+- Keep ticket text visible when grouping cards so you can easily compare content while organizing
+- Preserve feedback (bug reports and feature requests) when a team is deleted so nothing is lost
+
 ## [6.0] - 2026-02-02
 
 ### Added
