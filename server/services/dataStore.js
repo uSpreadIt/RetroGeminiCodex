@@ -295,15 +295,34 @@ const createDataStore = ({ rootDir }) => {
 
   // ---------------------------------------------------------------------------
   // Team index: maps team names to IDs for fast login lookups
+  // Uses Map internally to prevent prototype pollution from user-provided keys
   // ---------------------------------------------------------------------------
+
+  const indexToMap = (data) => {
+    const map = new Map();
+    if (data?.teams && typeof data.teams === 'object') {
+      for (const [k, v] of Object.entries(data.teams)) {
+        map.set(k, v);
+      }
+    }
+    return map;
+  };
+
+  const mapToIndex = (map) => {
+    const teams = Object.create(null);
+    for (const [k, v] of map.entries()) {
+      teams[k] = v;
+    }
+    return { teams };
+  };
 
   const loadTeamIndex = async () => {
     const data = await kvGet('team-index');
-    return data || { teams: {} };
+    return indexToMap(data);
   };
 
-  const saveTeamIndex = async (index) => {
-    await kvSet('team-index', index);
+  const saveTeamIndex = async (map) => {
+    await kvSet('team-index', mapToIndex(map));
   };
 
   const atomicTeamIndexUpdate = async (updater) => {
@@ -319,14 +338,15 @@ const createDataStore = ({ rootDir }) => {
             'SELECT value FROM kv_store WHERE key = $1 FOR UPDATE',
             [key]
           );
-          const currentValue = lockResult.rows.length > 0 && lockResult.rows[0].value
+          const raw = lockResult.rows.length > 0 && lockResult.rows[0].value
             ? JSON.parse(lockResult.rows[0].value)
             : { teams: {} };
+          const currentMap = indexToMap(raw);
 
-          const updated = updater(currentValue);
-          if (!updated) {
+          const updatedMap = updater(currentMap);
+          if (!updatedMap) {
             await client.query('ROLLBACK');
-            return currentValue;
+            return currentMap;
           }
 
           await client.query(
@@ -335,10 +355,10 @@ const createDataStore = ({ rootDir }) => {
              ON CONFLICT (key) DO UPDATE SET
                value = EXCLUDED.value,
                updated_at = NOW()`,
-            [key, JSON.stringify(updated)]
+            [key, JSON.stringify(mapToIndex(updatedMap))]
           );
           await client.query('COMMIT');
-          return updated;
+          return updatedMap;
         } catch (txErr) {
           await client.query('ROLLBACK').catch(() => {});
           if (attempt < MAX_RETRIES - 1) {
@@ -353,10 +373,11 @@ const createDataStore = ({ rootDir }) => {
         try {
           const result = sqliteDb.transaction(() => {
             const row = sqliteDb.prepare('SELECT value FROM kv_store WHERE key = ?').get(key);
-            const currentValue = row?.value ? JSON.parse(row.value) : { teams: {} };
+            const raw = row?.value ? JSON.parse(row.value) : { teams: {} };
+            const currentMap = indexToMap(raw);
 
-            const updated = updater(currentValue);
-            if (!updated) return currentValue;
+            const updatedMap = updater(currentMap);
+            if (!updatedMap) return currentMap;
 
             sqliteDb.prepare(
               `INSERT INTO kv_store (key, value, updated_at)
@@ -364,8 +385,8 @@ const createDataStore = ({ rootDir }) => {
                ON CONFLICT(key) DO UPDATE SET
                  value = excluded.value,
                  updated_at = CURRENT_TIMESTAMP`
-            ).run(key, JSON.stringify(updated));
-            return updated;
+            ).run(key, JSON.stringify(mapToIndex(updatedMap)));
+            return updatedMap;
           })();
           return result;
         } catch (err) {
@@ -654,12 +675,12 @@ const createDataStore = ({ rootDir }) => {
   const savePersistedData = async (data) => {
     const normalized = normalizePersistedData(data);
 
-    const index = { teams: {} };
+    const indexMap = new Map();
     for (const team of normalized.teams) {
       await saveTeam(team.id, team);
-      index.teams[team.name.toLowerCase()] = team.id;
+      indexMap.set(team.name.toLowerCase(), team.id);
     }
-    await saveTeamIndex(index);
+    await saveTeamIndex(indexMap);
 
     await saveMetaData({
       resetTokens: normalized.resetTokens,
@@ -714,15 +735,15 @@ const createDataStore = ({ rootDir }) => {
 
     console.info(`[Server] Migrating ${normalized.teams.length} team(s) from single-blob to per-team storage...`);
 
-    const index = { teams: {} };
+    const indexMap = new Map();
 
     for (const team of normalized.teams) {
       const teamData = { ...team, _rev: 1, _updatedAt: new Date().toISOString() };
       await kvSet(`team:${team.id}`, teamData);
-      index.teams[team.name.toLowerCase()] = team.id;
+      indexMap.set(team.name.toLowerCase(), team.id);
     }
 
-    await kvSet('team-index', index);
+    await kvSet('team-index', mapToIndex(indexMap));
 
     await kvSet('retro-meta', normalizeMetaData({
       resetTokens: normalized.resetTokens,

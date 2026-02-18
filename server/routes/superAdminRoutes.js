@@ -551,12 +551,10 @@ This notification was sent from RetroGemini.
       const oldNameKey = oldName.toLowerCase();
 
       await dataStore.atomicTeamIndexUpdate((index) => {
-        if (Object.hasOwn(index.teams, newNameKey) && index.teams[newNameKey] !== teamId) return null;
+        if (index.has(newNameKey) && index.get(newNameKey) !== teamId) return null;
 
-        if (Object.hasOwn(index.teams, oldNameKey)) {
-          delete index.teams[oldNameKey];
-        }
-        index.teams[newNameKey] = teamId;
+        index.delete(oldNameKey);
+        index.set(newNameKey, teamId);
         return index;
       });
 

@@ -47,9 +47,6 @@ const registerTeamRoutes = ({
   });
   const { sanitizeTeamForClient, authenticateTeam, atomicUpdateTeam } = teamService;
 
-  const getTeamIdFromIndex = (index, nameKey) =>
-    Object.hasOwn(index.teams, nameKey) ? index.teams[nameKey] : undefined;
-
   app.post('/api/team/login', loginLimiter, async (req, res) => {
     try {
       const { teamName, password } = req.body || {};
@@ -59,7 +56,7 @@ const registerTeamRoutes = ({
       }
 
       const index = await dataStore.loadTeamIndex();
-      const teamId = getTeamIdFromIndex(index, teamName.toLowerCase());
+      const teamId = index.get(teamName.toLowerCase());
 
       if (!teamId) {
         return res.status(401).json({ error: 'team_not_found' });
@@ -151,15 +148,15 @@ const registerTeamRoutes = ({
       const nameKey = name.toLowerCase();
       try {
         await dataStore.atomicTeamIndexUpdate((index) => {
-          if (Object.hasOwn(index.teams, nameKey)) {
+          if (index.has(nameKey)) {
             return null;
           }
-          index.teams[nameKey] = newTeam.id;
+          index.set(nameKey, newTeam.id);
           return index;
         });
 
         const currentIndex = await dataStore.loadTeamIndex();
-        if (getTeamIdFromIndex(currentIndex, nameKey) !== newTeam.id) {
+        if (currentIndex.get(nameKey) !== newTeam.id) {
           return res.status(409).json({ error: 'team_name_exists' });
         }
       } catch {
@@ -505,9 +502,11 @@ const registerTeamRoutes = ({
       await dataStore.deleteTeamRecord(teamId);
 
       await dataStore.atomicTeamIndexUpdate((index) => {
-        const nameKey = Object.keys(index.teams).find((k) => index.teams[k] === teamId);
-        if (nameKey) {
-          delete index.teams[nameKey];
+        for (const [k, v] of index.entries()) {
+          if (v === teamId) {
+            index.delete(k);
+            break;
+          }
         }
         return index;
       });
@@ -523,7 +522,7 @@ const registerTeamRoutes = ({
     try {
       const { teamName } = req.params;
       const index = await dataStore.loadTeamIndex();
-      const exists = !!getTeamIdFromIndex(index, decodeURIComponent(teamName).toLowerCase());
+      const exists = index.has(decodeURIComponent(teamName).toLowerCase());
       res.json({ exists });
     } catch (err) {
       console.error('[Server] Failed to check team existence', err);

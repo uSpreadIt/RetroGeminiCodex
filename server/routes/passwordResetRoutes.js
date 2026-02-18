@@ -29,8 +29,7 @@ const registerPasswordResetRoutes = ({
 
     try {
       const index = await dataStore.loadTeamIndex();
-      const nameKey = teamName.toLowerCase();
-      const teamId = Object.hasOwn(index.teams, nameKey) ? index.teams[nameKey] : undefined;
+      const teamId = index.get(teamName.toLowerCase());
 
       if (!teamId) {
         return res.status(204).end();
