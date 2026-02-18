@@ -7,6 +7,7 @@ import Session from './components/Session';
 import HealthCheckSession from './components/HealthCheckSession';
 import SuperAdmin from './components/SuperAdmin';
 import AnnouncementModal from './components/AnnouncementModal';
+import { AppLanguage, localization } from './services/localization';
 
 const LAST_SEEN_VERSION_KEY = 'retro-last-seen-version';
 
@@ -55,6 +56,7 @@ const App: React.FC = () => {
   const [pendingHealthCheckId, setPendingHealthCheckId] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
   const [dashboardTab, setDashboardTab] = useState<'ACTIONS' | 'RETROS' | 'HEALTH_CHECKS' | 'MEMBERS' | 'SETTINGS'>('ACTIONS');
+  const [language, setLanguage] = useState<AppLanguage>(localization.getLanguage());
 
   // Announcement system state
   const [showAnnouncements, setShowAnnouncements] = useState(false);
@@ -78,6 +80,12 @@ const App: React.FC = () => {
   useEffect(() => {
     dataService.hydrateFromServer().finally(() => setHydrated(true));
   }, []);
+
+  useEffect(() => localization.onLanguageChange(setLanguage), []);
+
+  useEffect(() => {
+    document.documentElement.lang = language;
+  }, [language]);
 
   // Fetch version info
   useEffect(() => {
@@ -546,10 +554,10 @@ const App: React.FC = () => {
                     <button
                         onClick={handleOpenAnnouncements}
                         className="relative flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
-                        title="What's New"
+                        title={localization.t('whatsNew')}
                     >
                         <span className="material-symbols-outlined text-lg">auto_awesome</span>
-                        <span className="hidden sm:inline">What's New</span>
+                        <span className="hidden sm:inline">{localization.t('whatsNew')}</span>
                         {hasUnreadAnnouncements && (
                             <span className="absolute -top-1 -right-1 w-5 h-5 bg-gradient-to-r from-rose-500 to-pink-500 text-white text-xs font-bold rounded-full flex items-center justify-center shadow-md">
                                 {unreadAnnouncements.reduce((acc, a) => acc + a.items.length, 0)}
@@ -560,7 +568,7 @@ const App: React.FC = () => {
 
                 <div className="flex items-center border-l pl-4 border-slate-200">
                     <div className="flex flex-col items-end mr-2">
-                        <span className="text-[10px] font-bold text-slate-400 uppercase leading-none mb-1">User</span>
+                        <span className="text-[10px] font-bold text-slate-400 uppercase leading-none mb-1">{localization.t('user')}</span>
                         <div className="text-sm font-bold text-slate-700">{currentUser.name}</div>
                     </div>
                     <div className={`w-8 h-8 rounded-full ${currentUser.color} text-white flex items-center justify-center text-xs font-bold shadow-md ring-2 ring-white`}>
@@ -568,10 +576,22 @@ const App: React.FC = () => {
                     </div>
                 </div>
                 {!isSession && (
-                     <button onClick={handleLogout} className="ml-4 text-slate-400 hover:text-red-500" title="Logout Team">
+                     <button onClick={handleLogout} className="ml-4 text-slate-400 hover:text-red-500" title={localization.t('logoutTeam')}>
                         <span className="material-symbols-outlined">logout</span>
                     </button>
                 )}
+                <div className="ml-2">
+                  <label className="sr-only" htmlFor="app-language-selector">{localization.t('language')}</label>
+                  <select
+                    id="app-language-selector"
+                    value={language}
+                    onChange={(e) => localization.setLanguage(e.target.value as AppLanguage)}
+                    className="text-xs border border-slate-300 rounded-md px-2 py-1 bg-white text-slate-700"
+                  >
+                    <option value="en">{localization.t('english')}</option>
+                    <option value="fr">{localization.t('french')}</option>
+                  </select>
+                </div>
             </div>
         </header>
     );

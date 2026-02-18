@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { dataService, InviteAutoJoinError } from '../services/dataService';
 import { Team, TeamSummary, User, RetroSession, ActionItem } from '../types';
+import { AppLanguage, localization } from '../services/localization';
 
 export interface InviteData {
   id: string;
@@ -39,8 +40,11 @@ const TeamLogin: React.FC<Props> = ({ onLogin, onJoin, inviteData, onSuperAdminL
   const [selectionMode, setSelectionMode] = useState<'SELECT_MEMBER' | 'NEW_NAME'>('SELECT_MEMBER');
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
   const [infoMessage, setInfoMessage] = useState('');
+  const [language, setLanguage] = useState<AppLanguage>(localization.getLanguage());
 
   const normalizeEmail = (email?: string | null) => email?.trim().toLowerCase();
+
+  useEffect(() => localization.onLanguageChange(setLanguage), []);
 
   // Handle password reset link
   useEffect(() => {
@@ -363,7 +367,18 @@ const TeamLogin: React.FC<Props> = ({ onLogin, onJoin, inviteData, onSuperAdminL
         <div className="bg-gradient-to-br from-indigo-600 to-purple-700 p-12 text-center md:text-left flex flex-col justify-center md:w-5/12 text-white relative overflow-hidden">
              <div className="absolute top-0 left-0 w-full h-full opacity-10 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]"></div>
              <div className="z-10">
-                <h1 className="text-4xl font-black mb-4 tracking-tighter">RetroGemini</h1>
+                <div className="flex items-center justify-between mb-4">
+                <h1 className="text-4xl font-black tracking-tighter">RetroGemini</h1>
+                <select
+                  value={language}
+                  onChange={(e) => localization.setLanguage(e.target.value as AppLanguage)}
+                  className="text-xs border border-white/40 bg-white/20 text-white rounded-md px-2 py-1"
+                  aria-label={localization.t('language')}
+                >
+                  <option value="en" className="text-slate-900">{localization.t('english')}</option>
+                  <option value="fr" className="text-slate-900">{localization.t('french')}</option>
+                </select>
+              </div>
                 <p className="text-indigo-100 font-medium text-lg leading-relaxed">
                     Collaborative retrospectives that help your team grow, improve, and celebrate together.
                 </p>

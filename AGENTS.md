@@ -5,6 +5,10 @@ This document provides guidelines for AI coding assistants (Claude, ChatGPT, Gem
 ## Project Overview
 
 **RetroGemini** is a self-hosted, real-time collaborative retrospectives and team health checks application built with:
+
+### Bilingual support
+- The application supports English and French for user-facing interface and retrospective templates
+
 - **Frontend**: React 19 + TypeScript + Vite + Tailwind CSS
 - **Backend**: Express 5 + Socket.IO + SQLite/PostgreSQL
 - **Deployment**: Docker + Railway/Kubernetes/OpenShift

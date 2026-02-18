@@ -1,5 +1,6 @@
 
 import { Team, TeamSummary, User, RetroSession, ActionItem, Column, Template, HealthCheckSession, HealthCheckTemplate, HealthCheckDimension, TeamFeedback, FeedbackComment } from '../types';
+import { localization } from './localization';
 
 // ==================== SECURE API CLIENT ====================
 // Uses team-scoped endpoints that require authentication
@@ -115,6 +116,71 @@ const PRESETS: Record<string, Column[]> = {
         {id: 'brick', title: 'Brick House (Solid)', color: 'bg-emerald-50', border: 'border-emerald-400', icon: 'home', text: 'text-emerald-700', ring: 'focus:ring-emerald-200', customColor: '#059669'},
         {id: 'wolf', title: 'Wolf (Threats)', color: 'bg-rose-50', border: 'border-rose-400', icon: 'pets', text: 'text-rose-700', ring: 'focus:ring-rose-200', customColor: '#e11d48'}
     ]
+};
+
+
+
+const PRESET_TITLE_TRANSLATIONS: Record<string, string> = {
+    Start: 'Commencer',
+    Stop: 'Arrêter',
+    Liked: 'Aimé',
+    Learned: 'Appris',
+    Lacked: 'Manqué',
+    'Longed For': 'Souhaité',
+    Mad: 'Fâché',
+    Sad: 'Triste',
+    Glad: 'Content',
+    'Wind (Helps Us)': 'Vent (Ce qui nous aide)',
+    'Anchors (Slow Us)': 'Ancres (Ce qui nous ralentit)',
+    'Rocks (Risks)': 'Rochers (Risques)',
+    'Island (Goals)': 'Île (Objectifs)',
+    'What Went Well': 'Ce qui a bien fonctionné',
+    "What Didn't Go Well": "Ce qui n'a pas bien fonctionné",
+    'What to Try Next': 'Ce que nous allons essayer ensuite',
+    'What Puzzles Us': 'Ce qui nous interroge',
+    Keep: 'Garder',
+    Add: 'Ajouter',
+    Less: 'Moins',
+    More: 'Plus',
+    Drop: 'Abandonner',
+    Improve: 'Améliorer',
+    'Start Doing': 'Commencer à faire',
+    Continue: 'Continuer',
+    'Do More': 'Faire plus',
+    'Do Less': 'Faire moins',
+    'Stop Doing': 'Arrêter de faire',
+    'Rose (Positive)': 'Rose (Positif)',
+    'Thorn (Negative)': 'Épine (Négatif)',
+    'Bud (Opportunity)': 'Bourgeon (Opportunité)',
+    'Lift (Helps us rise)': 'Montgolfière (Ce qui nous élève)',
+    'Weight (Slows us down)': 'Poids (Ce qui nous ralentit)',
+    'Weather (External factors)': 'Météo (Facteurs externes)',
+    'Fuel (What powers us)': 'Carburant (Ce qui nous motive)',
+    'Engine (How we work)': 'Moteur (Comment nous travaillons)',
+    'Brakes (What slows us)': 'Freins (Ce qui nous ralentit)',
+    'Steering (Direction)': 'Direction',
+    Questions: 'Questions',
+    'To Discuss': 'À discuter',
+    Decisions: 'Décisions',
+    Straw: 'Paille',
+    Sticks: 'Bâtons',
+    Bricks: 'Briques',
+};
+
+const getPresets = (): Record<string, Column[]> => {
+    const presets = JSON.parse(JSON.stringify(PRESETS)) as Record<string, Column[]>;
+    if (localization.getLanguage() === 'fr') {
+      return Object.fromEntries(
+        Object.entries(presets).map(([key, columns]) => [
+          key,
+          columns.map((column) => ({
+            ...column,
+            title: PRESET_TITLE_TRANSLATIONS[column.title] || column.title,
+          })),
+        ])
+      );
+    }
+    return presets;
 };
 
 // ==================== HEALTH CHECK TEMPLATES ====================
@@ -430,7 +496,7 @@ const ensureSessionPlaceholder = (teamId: string, sessionId: string): RetroSessi
     participants: [],
     discussionFocusId: null,
     icebreakerQuestion: 'What was the highlight of your week?',
-    columns: PRESETS['start_stop_continue'],
+    columns: getPresets()['start_stop_continue'],
     settings: {
       isAnonymous: false,
       maxVotes: 5,
@@ -898,7 +964,7 @@ export const dataService = {
     }));
   },
 
-  getPresets: () => PRESETS,
+  getPresets,
   getHex,
 
   createSessionInvite: (teamId: string, sessionId?: string, healthCheckSessionId?: string) => {
