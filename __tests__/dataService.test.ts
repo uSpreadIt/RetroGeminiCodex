@@ -607,6 +607,54 @@ describe('dataService', () => {
       expect(retroAction?.done).toBe(true);
     });
 
+    it('keeps mirrored retrospective action fields synced when updating a global action', async () => {
+      const team = await dataService.createTeam('Team', 'pwd');
+      const retro = dataService.createSession(team.id, 'Retro', columns);
+      const action = dataService.addGlobalAction(team.id, 'Original text', null);
+      retro.actions.push({ ...action });
+      dataService.updateSession(team.id, retro);
+
+      dataService.updateGlobalAction(team.id, {
+        ...action,
+        text: 'Updated text',
+        assigneeId: 'member-1',
+        done: true,
+      });
+
+      const syncedTeam = dataService.getTeam(team.id)!;
+      const mirrored = syncedTeam.retrospectives[0].actions.find(a => a.id === action.id);
+
+      expect(syncedTeam.globalActions[0].text).toBe('Updated text');
+      expect(mirrored?.text).toBe('Updated text');
+      expect(mirrored?.assigneeId).toBe('member-1');
+      expect(mirrored?.done).toBe(true);
+    });
+
+    it('toggles retrospective-only actions when they are not present in global actions', async () => {
+      const team = await dataService.createTeam('Team', 'pwd');
+      const retro = dataService.createSession(team.id, 'Retro', columns);
+
+      const retroOnlyAction: ActionItem = {
+        id: 'retro-only',
+        text: 'Retro-only action',
+        assigneeId: null,
+        done: false,
+        type: 'new',
+        proposalVotes: {}
+      };
+
+      retro.actions.push(retroOnlyAction);
+      dataService.updateSession(team.id, retro);
+
+      dataService.toggleGlobalAction(team.id, retroOnlyAction.id);
+
+      const syncedTeam = dataService.getTeam(team.id)!;
+      const updatedRetroAction = syncedTeam.retrospectives[0].actions.find(a => a.id === retroOnlyAction.id);
+
+      expect(syncedTeam.globalActions.find(a => a.id === retroOnlyAction.id)).toBeUndefined();
+      expect(updatedRetroAction?.done).toBe(true);
+    });
+
     it('deletes action item', async () => {
       const team = await dataService.createTeam('Team', 'pwd');
       const action = dataService.addGlobalAction(team.id, 'Task', null);

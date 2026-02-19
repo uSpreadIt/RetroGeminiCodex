@@ -37,9 +37,7 @@
     "security:audit": "npm audit --audit-level=moderate",
     "security:fix": "npm audit fix",
     "ci": "npm run lint && npm run type-check && npm run test && npm run build",
-    "prepare": "node -e \"import('husky').catch((e) => { if (e.code !== 'ERR_MODULE_NOT_FOUND' && e.code !== 'MODULE_NOT_FOUND') throw e; })\"",
-    "audit": "npm audit --omit=dev --audit-level=moderate",
-    "audit:all": "npm audit --audit-level=moderate"
+    "prepare": "node -e \"import('husky').catch((e) => { if (e.code !== 'ERR_MODULE_NOT_FOUND' && e.code !== 'MODULE_NOT_FOUND') throw e; })\""
   },
   "lint-staged": {
     "*.{ts,tsx}": [
