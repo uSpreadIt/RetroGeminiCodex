@@ -501,6 +501,12 @@ const App: React.FC = () => {
     if (currentUser?.role === 'participant') return;
 
     void dataService.awaitPendingWrites().finally(() => {
+      if (currentTeam) {
+        const latestTeam = dataService.getTeam(currentTeam.id);
+        if (latestTeam) {
+          setCurrentTeam(JSON.parse(JSON.stringify(latestTeam)));
+        }
+      }
       setActiveSessionId(sessionId);
       setView('SESSION');
     });
@@ -510,6 +516,12 @@ const App: React.FC = () => {
     if (currentUser?.role === 'participant') return;
 
     void dataService.awaitPendingWrites().finally(() => {
+      if (currentTeam) {
+        const latestTeam = dataService.getTeam(currentTeam.id);
+        if (latestTeam) {
+          setCurrentTeam(JSON.parse(JSON.stringify(latestTeam)));
+        }
+      }
       setActiveHealthCheckId(healthCheckId);
       setView('HEALTH_CHECK');
     });
