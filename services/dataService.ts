@@ -814,10 +814,30 @@ export const dataService = {
     if (!team || team.id !== teamId) return;
 
     const idx = team.globalActions.findIndex(a => a.id === action.id);
+    let updatedGlobal = false;
+    let updatedRetro = false;
+
     if(idx !== -1) {
         team.globalActions[idx] = action;
-        queuePersist(() => persistAction(teamId, action));
-        return;
+        updatedGlobal = true;
+    }
+
+    // Keep retrospective copies synchronized when a global action with the same
+    // identifier already exists there (legacy/session snapshots).
+    for (const retro of team.retrospectives) {
+      const retroIdx = retro.actions.findIndex(a => a.id === action.id);
+      if (retroIdx !== -1) {
+        retro.actions[retroIdx] = { ...retro.actions[retroIdx], ...action };
+        updatedRetro = true;
+      }
+    }
+
+    if (updatedGlobal || updatedRetro) {
+      queuePersist(() => persistTeamUpdate(teamId, {
+        globalActions: team.globalActions,
+        retrospectives: team.retrospectives
+      }));
+      return;
     }
 
     // Fallback: update a retrospective action (previously created action)
@@ -836,19 +856,28 @@ export const dataService = {
     if (!team || team.id !== teamId) return;
 
     const action = team.globalActions.find(a => a.id === actionId);
-    if(action) {
-        action.done = !action.done;
-        queuePersist(() => persistAction(teamId, action));
-    } else {
-        // Check retro actions
-        for(const retro of team.retrospectives) {
-            const ra = retro.actions.find(a => a.id === actionId);
-            if(ra) {
-                ra.done = !ra.done;
-                queuePersist(() => persistAction(teamId, ra, retro.id));
-                break;
-            }
-        }
+    const newDoneValue = action ? !action.done : undefined;
+
+    let changed = false;
+
+    if (action) {
+      action.done = newDoneValue as boolean;
+      changed = true;
+    }
+
+    for (const retro of team.retrospectives) {
+      const ra = retro.actions.find(a => a.id === actionId);
+      if (!ra) continue;
+
+      ra.done = newDoneValue ?? !ra.done;
+      changed = true;
+    }
+
+    if (changed) {
+      queuePersist(() => persistTeamUpdate(teamId, {
+        globalActions: team.globalActions,
+        retrospectives: team.retrospectives
+      }));
     }
   },
 

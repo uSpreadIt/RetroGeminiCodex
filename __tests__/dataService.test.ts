@@ -589,6 +589,24 @@ describe('dataService', () => {
       expect(dataService.getTeam(team.id)!.globalActions[0].done).toBe(true);
     });
 
+    it('keeps retrospective action state synced when toggling a mirrored global action', async () => {
+      const team = await dataService.createTeam('Team', 'pwd');
+      const retro = dataService.createSession(team.id, 'Retro', columns);
+      const action = dataService.addGlobalAction(team.id, 'Shared action', null);
+
+      retro.actions.push({ ...action });
+      dataService.updateSession(team.id, retro);
+
+      dataService.toggleGlobalAction(team.id, action.id);
+
+      const syncedTeam = dataService.getTeam(team.id)!;
+      const globalAction = syncedTeam.globalActions.find(a => a.id === action.id);
+      const retroAction = syncedTeam.retrospectives[0].actions.find(a => a.id === action.id);
+
+      expect(globalAction?.done).toBe(true);
+      expect(retroAction?.done).toBe(true);
+    });
+
     it('deletes action item', async () => {
       const team = await dataService.createTeam('Team', 'pwd');
       const action = dataService.addGlobalAction(team.id, 'Task', null);

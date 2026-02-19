@@ -376,24 +376,31 @@ const registerTeamRoutes = ({
       const result = await atomicUpdateTeam(teamId, (currentTeam) => {
         if (!currentTeam.globalActions) currentTeam.globalActions = [];
 
+        let updated = false;
+
         const globalIdx = currentTeam.globalActions.findIndex((a) => a.id === action.id);
         if (globalIdx !== -1) {
           currentTeam.globalActions[globalIdx] = { ...action };
-          return currentTeam;
+          updated = true;
         }
 
-        if (retroId && currentTeam.retrospectives) {
-          const retro = currentTeam.retrospectives.find((r) => r.id === retroId);
-          if (retro && retro.actions) {
+        if (currentTeam.retrospectives) {
+          currentTeam.retrospectives.forEach((retro) => {
+            if (!retro.actions) return;
+            if (retroId && retro.id !== retroId && globalIdx === -1) return;
+
             const retroActionIdx = retro.actions.findIndex((a) => a.id === action.id);
             if (retroActionIdx !== -1) {
-              retro.actions[retroActionIdx] = { ...action };
-              return currentTeam;
+              retro.actions[retroActionIdx] = { ...retro.actions[retroActionIdx], ...action };
+              updated = true;
             }
-          }
+          });
         }
 
-        currentTeam.globalActions.unshift(action);
+        if (!updated) {
+          currentTeam.globalActions.unshift(action);
+        }
+
         return currentTeam;
       });
 
