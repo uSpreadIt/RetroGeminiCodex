@@ -38,10 +38,10 @@ const OpenActionsPhase: React.FC<Props> = ({
   );
 
   const actionsFromTeam = [
-    ...currentTeam.globalActions.filter((action) => actionIds.includes(action.id)),
     ...currentTeam.retrospectives.flatMap((retro) =>
       retro.actions.filter((action) => actionIds.includes(action.id) && action.type !== 'proposal')
-    )
+    ),
+    ...currentTeam.globalActions.filter((action) => actionIds.includes(action.id))
   ].map((action) => {
     const snapshot = snapshotMap.get(action.id);
     return {
@@ -52,6 +52,7 @@ const OpenActionsPhase: React.FC<Props> = ({
     };
   });
 
+  // Prefer global entries when an action exists both in global backlog and in retro snapshots.
   const uniqueActions = Array.from(new Map(actionsFromTeam.map((item) => [item.id, item])).values());
 
   return (

@@ -133,24 +133,25 @@ const Dashboard: React.FC<Props> = ({ team, currentUser, onOpenSession, onOpenHe
   const archivedMembers = team.archivedMembers || [];
   const knownMembers = [...team.members, ...archivedMembers];
 
-  // Combine global actions and actions from all retros
-  const allActions = [
-      ...team.globalActions.map(a => ({...a, originRetro: 'Dashboard', contextText: ''})),
-      ...team.retrospectives.flatMap(r => r.actions
-        .filter(a => a.type !== 'proposal')
-        .map(a => {
-          let contextText = '';
-          if (a.linkedTicketId) {
-              const t = r.tickets.find(x => x.id === a.linkedTicketId);
-              if(t) contextText = t.text;
-              else {
-                  const g = r.groups.find(x => x.id === a.linkedTicketId);
-                  if(g) contextText = `Group: ${g.title}`;
-              }
+  const retroActions = team.retrospectives.flatMap(r => r.actions
+    .filter(a => a.type !== 'proposal')
+    .map(a => {
+      let contextText = '';
+      if (a.linkedTicketId) {
+          const t = r.tickets.find(x => x.id === a.linkedTicketId);
+          if(t) contextText = t.text;
+          else {
+              const g = r.groups.find(x => x.id === a.linkedTicketId);
+              if(g) contextText = `Group: ${g.title}`;
           }
-          return {...a, originRetro: r.name, contextText };
-      }))
-  ];
+      }
+      return {...a, originRetro: r.name, contextText };
+  }));
+
+  const globalActions = team.globalActions.map(a => ({...a, originRetro: 'Dashboard', contextText: ''}));
+
+  // Merge by id and prefer Dashboard/global values when duplicates exist.
+  const allActions = Array.from(new Map([...retroActions, ...globalActions].map((action) => [action.id, action])).values());
 
   const filteredActions = allActions.filter(a => {
       if(actionFilter === 'OPEN') return !a.done;

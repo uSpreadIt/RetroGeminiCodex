@@ -53,17 +53,6 @@ const ReviewPhase: React.FC<Props> = ({
   );
 
   const historySource = [
-    ...currentTeam.globalActions
-      .filter((action) => actionIds.includes(action.id))
-      .map((action) => {
-        const snapshot = historySnapshotMap.get(action.id);
-        return {
-          ...action,
-          done: snapshot ? snapshot.done : action.done,
-          assigneeId: snapshot ? snapshot.assigneeId : action.assigneeId,
-          contextText: buildActionContext(action, currentTeam)
-        };
-      }),
     ...currentTeam.retrospectives
       .filter((retro) => retro.id !== session.id)
       .flatMap((retro) =>
@@ -78,9 +67,21 @@ const ReviewPhase: React.FC<Props> = ({
               contextText: buildActionContext(action, currentTeam)
             };
           })
-      )
+      ),
+    ...currentTeam.globalActions
+      .filter((action) => actionIds.includes(action.id))
+      .map((action) => {
+        const snapshot = historySnapshotMap.get(action.id);
+        return {
+          ...action,
+          done: snapshot ? snapshot.done : action.done,
+          assigneeId: snapshot ? snapshot.assigneeId : action.assigneeId,
+          contextText: buildActionContext(action, currentTeam)
+        };
+      })
   ];
 
+  // Prefer global entries when an action exists both in global backlog and in retro snapshots.
   const uniquePrevActions = Array.from(new Map(historySource.map((item) => [item.id, item])).values());
 
   const ActionRow: React.FC<{ action: ActionItem; isGlobal: boolean }> = ({ action, isGlobal }) => {
