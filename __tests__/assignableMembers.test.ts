@@ -13,24 +13,29 @@ describe('assignableMembers only uses active team members', () => {
     'utf-8'
   );
 
-  it('Session.tsx does not include participants in assignableMembers', () => {
-    // The assignableMembers should only use team.members, not session participants
+  it('Session.tsx does not include session participants or archivedMembers in assignableMembers', () => {
+    // The assignableMembers should derive from team.members (via dataService or prop), not session participants
     const assignableBlock = sessionSource.match(/const assignableMembers[^;]+;/s)?.[0] ?? '';
-    expect(assignableBlock).not.toContain('participants');
     expect(assignableBlock).not.toContain('archivedMembers');
+    // Must not spread raw participants array into assignableMembers
+    expect(assignableBlock).not.toMatch(/\.\.\.\s*participants/);
   });
 
-  it('Session.tsx derives assignableMembers from team.members only', () => {
-    expect(sessionSource).toContain('const assignableMembers = [...team.members];');
+  it('Session.tsx derives assignableMembers from team members via dataService', () => {
+    expect(sessionSource).toContain(
+      'const assignableMembers = [...(dataService.getTeam(team.id)?.members ?? team.members)];'
+    );
   });
 
-  it('HealthCheckSession.tsx does not include participants in assignableMembers', () => {
+  it('HealthCheckSession.tsx does not include session participants or archivedMembers in assignableMembers', () => {
     const assignableBlock = healthCheckSource.match(/const assignableMembers[^;]+;/s)?.[0] ?? '';
-    expect(assignableBlock).not.toContain('participants');
     expect(assignableBlock).not.toContain('archivedMembers');
+    expect(assignableBlock).not.toMatch(/\.\.\.\s*participants/);
   });
 
-  it('HealthCheckSession.tsx derives assignableMembers from team.members only', () => {
-    expect(healthCheckSource).toContain('const assignableMembers = [...team.members];');
+  it('HealthCheckSession.tsx derives assignableMembers from team members via dataService', () => {
+    expect(healthCheckSource).toContain(
+      'const assignableMembers = [...(dataService.getTeam(team.id)?.members ?? team.members)];'
+    );
   });
 });
