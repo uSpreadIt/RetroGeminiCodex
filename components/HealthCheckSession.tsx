@@ -225,7 +225,7 @@ const HealthCheckSession: React.FC<Props> = ({ team, currentUser, sessionId, onE
   };
 
   const participants = getParticipants();
-  const assignableMembers = [...team.members];
+  const assignableMembers = [...(dataService.getTeam(team.id)?.members ?? team.members)];
 
   const getAnonymizedLabel = (memberId: string) => {
     if (!session?.settings.isAnonymous) return null;
