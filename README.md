@@ -187,6 +187,24 @@ docker-compose --profile dev up dev
 
 This starts the Vite dev server with hot reload at http://localhost:5173.
 
+### E2E Tests (Playwright)
+
+```bash
+# Headless run (CI style)
+npm run test:e2e
+
+# See the browser window locally (Windows/macOS/Linux)
+npm run test:e2e:headed
+
+# Step-by-step debug with Playwright Inspector
+npm run test:e2e:debug
+
+# Open the HTML report generated after the run
+npx playwright show-report
+```
+
+On Windows, run these commands in PowerShell or Command Prompt from the project root.
+
 ### Project Structure
 
 ```
