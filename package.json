@@ -36,6 +36,7 @@
     "type-check": "tsc --noEmit",
     "security:audit": "npm audit --audit-level=moderate",
     "security:fix": "npm audit fix",
+    "test:e2e": "npx playwright test",
     "ci": "npm run lint && npm run type-check && npm run test && npm run build",
     "prepare": "node -e \"import('husky').catch((e) => { if (e.code !== 'ERR_MODULE_NOT_FOUND' && e.code !== 'MODULE_NOT_FOUND') throw e; })\""
   },
@@ -68,6 +69,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.2",
+    "@playwright/test": "^1.56.1",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.1.0",
     "@testing-library/user-event": "^14.5.2",
