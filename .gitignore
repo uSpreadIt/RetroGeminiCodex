@@ -47,3 +47,7 @@ coverage
 
 # Test artifacts
 .cache
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache
