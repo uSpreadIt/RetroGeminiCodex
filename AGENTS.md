@@ -220,7 +220,6 @@ See `README.md` for full list. Key ones:
 - `BACKUP_ENABLED` - Enable automatic server-side backups (default: `true`)
 - `BACKUP_INTERVAL_HOURS` - Hours between automatic backups (default: `24`)
 - `BACKUP_MAX_COUNT` - Max automatic backups to keep (default: `7`)
-- `BACKUP_DIR` - Directory for backup files (default: `/data/backups`)
 - `BACKUP_ON_STARTUP` - Create backup on server start (default: `true`)
 
 ## Common Pitfalls to Avoid

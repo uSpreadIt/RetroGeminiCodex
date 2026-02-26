@@ -196,7 +196,7 @@ kubectl rollout restart deployment/retrogemini
 
 ## Automated backups
 
-RetroGemini includes an automatic server-side backup system that creates `.json.gz` snapshots of all data. Backups are stored on a dedicated PVC (`retrogemini-backups`) mounted at `/data/backups`.
+RetroGemini includes an automatic server-side backup system that creates compressed snapshots of all data. Backups are stored in the PostgreSQL database (in a dedicated `backups` table), so they work seamlessly with multi-pod deployments — no extra PVC required.
 
 ### How it works
 
@@ -217,21 +217,9 @@ These environment variables are set directly in `deployment.yaml` (not in secret
 | `BACKUP_MAX_COUNT` | `7` | Max automatic backups to keep |
 | `BACKUP_ON_STARTUP` | `true` | Create backup when server starts |
 
-### Accessing backup files
+### Multi-pod support
 
-```bash
-# List backup files on the PVC
-kubectl exec deployment/retrogemini -- ls -la /data/backups/
-
-# Copy a backup file locally
-kubectl cp retrogemini/$(kubectl get pod -l app=retrogemini -o jsonpath='{.items[0].metadata.name}'):/data/backups/retrogemini-backup-2025-01-01T00-00-00-000Z.json.gz ./local-backup.json.gz
-```
-
-### Multi-pod coordination
-
-The deployment uses 2 replicas by default. All pods share the same backup PVC and PostgreSQL database. A file-based lock (`backups.lock`) prevents concurrent backup creation. Startup backups are deduplicated (skipped if one was created within 5 minutes).
-
-The PVC uses `ReadWriteOnce` access mode, which works when all pods are on the same node. If your cluster schedules pods across multiple nodes, change the PVC to `ReadWriteMany` or use a shared storage class (NFS, CephFS).
+The deployment uses 2 replicas by default for zero-downtime rolling updates. Since backups are stored in PostgreSQL, all pods can read and write backups without volume conflicts. Startup backups are deduplicated (skipped if one was created within 5 minutes).
 
 ---
 
