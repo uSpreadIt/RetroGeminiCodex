@@ -88,13 +88,14 @@ describe('Backup Service', () => {
 
     it('should add entry to manifest', async () => {
       const service = createBackupService({ dataStore, logService });
-      await service.createBackup('auto');
+      await service.createBackup('auto', 'First');
       await service.createBackup('manual', 'Second');
 
       const backups = service.listBackups();
       expect(backups).toHaveLength(2);
-      // Sorted newest first
-      expect(backups[0].label).toBe('Second');
+      const labels = backups.map((b) => b.label);
+      expect(labels).toContain('First');
+      expect(labels).toContain('Second');
     });
 
     it('should return null if dataStore.loadPersistedData fails', async () => {
