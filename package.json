@@ -38,7 +38,9 @@
     "security:fix": "npm audit fix",
     "test:e2e": "npx playwright test",
     "ci": "npm run lint && npm run type-check && npm run test && npm run build",
-    "prepare": "node -e \"import('husky').catch((e) => { if (e.code !== 'ERR_MODULE_NOT_FOUND' && e.code !== 'MODULE_NOT_FOUND') throw e; })\""
+    "prepare": "node -e \"import('husky').catch((e) => { if (e.code !== 'ERR_MODULE_NOT_FOUND' && e.code !== 'MODULE_NOT_FOUND') throw e; })\"",
+    "test:e2e:headed": "npx playwright test --headed --project=chromium",
+    "test:e2e:debug": "npx playwright test --debug --project=chromium"
   },
   "lint-staged": {
     "*.{ts,tsx}": [

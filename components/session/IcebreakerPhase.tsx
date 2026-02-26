@@ -26,6 +26,7 @@ const IcebreakerPhase: React.FC<Props> = ({
       <div className="flex-grow flex flex-col relative mb-8">
         {isFacilitator ? (
           <textarea
+            data-testid="icebreaker-question-input"
             value={localIcebreakerQuestion !== null ? localIcebreakerQuestion : session.icebreakerQuestion}
             onChange={(event) => onQuestionChange(event.target.value)}
             className="w-full h-full bg-slate-900 border border-slate-600 rounded-xl p-6 text-3xl text-center text-indigo-300 font-medium leading-relaxed focus:border-retro-primary outline-none resize-none flex-grow"
@@ -33,7 +34,7 @@ const IcebreakerPhase: React.FC<Props> = ({
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center bg-slate-900/50 rounded-xl border border-slate-700/50 p-6">
-            <p className="text-3xl text-indigo-300 font-medium leading-relaxed">{session.icebreakerQuestion}</p>
+            <p data-testid="icebreaker-question-display" className="text-3xl text-indigo-300 font-medium leading-relaxed">{session.icebreakerQuestion}</p>
           </div>
         )}
       </div>

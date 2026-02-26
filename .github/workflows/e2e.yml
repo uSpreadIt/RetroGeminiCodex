@@ -27,10 +27,27 @@ jobs:
       - name: Run E2E tests
         run: npm run test:e2e
 
-      - name: Upload Playwright report
+      - name: List Playwright artifacts
+        if: always()
+        run: |
+          echo '== playwright-report =='
+          find playwright-report -maxdepth 3 -type f | sort || true
+          echo '== test-results videos =='
+          find test-results -type f -name '*.webm' | sort || true
+
+      - name: Upload Playwright HTML report
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: playwright-report
           path: playwright-report/
+          retention-days: 30
+
+      - name: Upload Playwright videos
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-videos
+          path: test-results/**/*.webm
+          if-no-files-found: warn
           retention-days: 30
