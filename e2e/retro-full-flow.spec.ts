@@ -121,25 +121,28 @@ test.describe('Full Retrospective Flow', () => {
     // ================================================================
     // STEP 4: Icebreaker - Verify sync when facilitator changes question
     // ================================================================
+    const facilitatorIcebreakerInput = facilitator.getByTestId('icebreaker-question-input');
+    const participantIcebreakerDisplay = participant.getByTestId('icebreaker-question-display');
+
     // Facilitator clicks "Random" to get a new icebreaker question
     await facilitator.getByRole('button', { name: 'Random' }).click();
-    await waitForSync();
 
-    // Get the question shown on facilitator side
-    const facilitatorQuestion = await facilitator.locator('textarea[placeholder="Type or generate a question..."]').inputValue();
+    // Get the question shown on facilitator side and ensure participant receives the same value
+    const facilitatorQuestion = await facilitatorIcebreakerInput.inputValue();
     expect(facilitatorQuestion.length).toBeGreaterThan(0);
+    await expect(participantIcebreakerDisplay).toHaveText(facilitatorQuestion, { timeout: 10_000 });
 
-    // Verify participant sees the same question (participant sees it as read-only text)
-    await expect(participant.getByText(facilitatorQuestion, { exact: false })).toBeVisible({ timeout: 5_000 });
+    // Facilitator types a custom question and verify real-time sync to participant
+    const customQuestion = `bonjour from facilitator ${Date.now()}`;
+    await facilitatorIcebreakerInput.fill(customQuestion);
+    await expect(facilitatorIcebreakerInput).toHaveValue(customQuestion);
+    await expect(participantIcebreakerDisplay).toHaveText(customQuestion, { timeout: 10_000 });
 
-    // Click Random again to change and re-verify sync
-    await facilitator.getByRole('button', { name: 'Random' }).click();
-    await waitForSync();
-
-    const newQuestion = await facilitator.locator('textarea[placeholder="Type or generate a question..."]').inputValue();
-
-    // Verify it updated on participant side
-    await expect(participant.getByText(newQuestion, { exact: false })).toBeVisible({ timeout: 5_000 });
+    // Facilitator edits the question again and ensure participant reflects the latest value
+    const updatedCustomQuestion = `${customQuestion} (updated)`;
+    await facilitatorIcebreakerInput.fill(updatedCustomQuestion);
+    await expect(participantIcebreakerDisplay).toHaveText(updatedCustomQuestion, { timeout: 10_000 });
+    await expect(participantIcebreakerDisplay).not.toHaveText(customQuestion, { timeout: 10_000 });
 
     // Facilitator starts the session (advances to WELCOME)
     await facilitator.getByRole('button', { name: 'Start Session' }).click();
