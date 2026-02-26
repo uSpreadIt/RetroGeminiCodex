@@ -54,24 +54,24 @@ const createBackupService = ({ dataStore, logService }) => {
   // File-based lock for multi-pod coordination
   // ---------------------------------------------------------------------------
 
-  const acquireLock = () => {
+  const cleanStaleLock = () => {
     try {
-      const lockFile = lockPath();
-      // Check for stale lock
-      if (fs.existsSync(lockFile)) {
-        try {
-          const stat = fs.statSync(lockFile);
-          if (Date.now() - stat.mtimeMs > LOCK_STALE_MS) {
-            fs.unlinkSync(lockFile);
-          } else {
-            return false;
-          }
-        } catch {
-          return false;
-        }
+      const stat = fs.statSync(lockPath());
+      if (Date.now() - stat.mtimeMs > LOCK_STALE_MS) {
+        fs.unlinkSync(lockPath());
       }
-      // Attempt exclusive file creation
-      fs.writeFileSync(lockFile, String(process.pid), { flag: 'wx' });
+    } catch {
+      // Lock doesn't exist or already removed — nothing to clean
+    }
+  };
+
+  const acquireLock = () => {
+    cleanStaleLock();
+    try {
+      // Atomic exclusive file creation — fails if lock already exists
+      const fd = fs.openSync(lockPath(), fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL);
+      fs.writeSync(fd, String(process.pid));
+      fs.closeSync(fd);
       return true;
     } catch {
       return false;

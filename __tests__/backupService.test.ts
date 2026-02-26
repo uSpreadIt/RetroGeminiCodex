@@ -32,8 +32,7 @@ describe('Backup Service', () => {
   let logService: ReturnType<typeof createMockLogService>;
 
   beforeEach(async () => {
-    backupDir = join(os.tmpdir(), `retro-backup-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-    fs.mkdirSync(backupDir, { recursive: true });
+    backupDir = fs.mkdtempSync(join(os.tmpdir(), 'retro-backup-test-'));
 
     process.env.BACKUP_DIR = backupDir;
     process.env.BACKUP_ENABLED = 'true';
