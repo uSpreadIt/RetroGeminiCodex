@@ -217,6 +217,10 @@ See `README.md` for full list. Key ones:
 - `DATA_STORE_PATH` - SQLite database path (used when DATABASE_URL is not set)
 - `SUPER_ADMIN_PASSWORD` - Enable super admin panel
 - `SMTP_*` - Email configuration
+- `BACKUP_ENABLED` - Enable automatic server-side backups (default: `true`)
+- `BACKUP_INTERVAL_HOURS` - Hours between automatic backups (default: `24`)
+- `BACKUP_MAX_COUNT` - Max automatic backups to keep (default: `7`)
+- `BACKUP_ON_STARTUP` - Create backup on server start (default: `true`)
 
 ## Common Pitfalls to Avoid
 
@@ -254,6 +258,12 @@ npm run ci           # lint + type-check + test + build
 | `/api/send-invite` | POST | Send email invitations |
 | `/api/send-password-reset` | POST | Send password reset email |
 | `/api/super-admin/*` | POST | Super admin operations |
+| `/api/super-admin/backups/list` | POST | List server-side backups and config |
+| `/api/super-admin/backups/create` | POST | Create a manual checkpoint |
+| `/api/super-admin/backups/download` | POST | Download a specific backup |
+| `/api/super-admin/backups/restore` | POST | Restore from a backup |
+| `/api/super-admin/backups/delete` | POST | Delete a backup |
+| `/api/super-admin/backups/update` | POST | Update backup label/protection |
 | `/health` | GET | Health check |
 | `/ready` | GET | Readiness check |
 

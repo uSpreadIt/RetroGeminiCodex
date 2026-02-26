@@ -5,6 +5,11 @@ All notable changes to RetroGemini will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 Version follows `X.Y` format where X increments for new features and Y for bug fixes.
 
+## [9.0] - 2026-02-26
+
+### Added
+- Automated server-side data backups with configurable schedule, startup snapshots, and manual checkpoints you can name and restore from the super admin panel
+
 ## [8.0] - 2026-02-20
 
 ### Added

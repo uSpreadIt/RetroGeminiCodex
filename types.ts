@@ -263,3 +263,18 @@ export interface ServerLogEntry {
   message: string;
   details?: string;
 }
+
+// ==================== BACKUP TYPES ====================
+
+export type BackupType = 'auto' | 'manual' | 'startup';
+
+export interface BackupEntry {
+  id: string;
+  filename: string;
+  type: BackupType;
+  label?: string;
+  createdAt: string;
+  sizeBytes: number;
+  teamCount: number;
+  protected: boolean;
+}

@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Team, TeamFeedback, ActiveSession, ServerLogEntry } from '../types';
+import { Team, TeamFeedback, ActiveSession, ServerLogEntry, BackupEntry } from '../types';
 
 interface Props {
   sessionToken: string;
   onExit: () => void;
 }
 
-type TabType = 'TEAMS' | 'FEEDBACKS' | 'LIVE' | 'LOGS';
+type TabType = 'TEAMS' | 'FEEDBACKS' | 'LIVE' | 'LOGS' | 'BACKUPS';
 
 const SuperAdmin: React.FC<Props> = ({ sessionToken, onExit }) => {
   const [tab, setTab] = useState<TabType>('TEAMS');
@@ -50,6 +50,16 @@ const SuperAdmin: React.FC<Props> = ({ sessionToken, onExit }) => {
   const [logsLoading, setLogsLoading] = useState(false);
   const [logFilter, setLogFilter] = useState<{ level?: string; source?: string }>({});
 
+  // Backups
+  const [backups, setBackups] = useState<BackupEntry[]>([]);
+  const [backupsLoading, setBackupsLoading] = useState(false);
+  const [backupConfig, setBackupConfig] = useState<{
+    enabled: boolean; intervalHours: number; maxCount: number; backupDir: string; onStartup: boolean;
+  } | null>(null);
+  const [checkpointLabel, setCheckpointLabel] = useState('');
+  const [backupCreating, setBackupCreating] = useState(false);
+  const [backupRestoring, setBackupRestoring] = useState<string | null>(null);
+
   const getRateLimitMessage = async (response: Response) => {
     if (response.status !== 429) return null;
     const data = await response.json().catch(() => null);
@@ -80,6 +90,10 @@ const SuperAdmin: React.FC<Props> = ({ sessionToken, onExit }) => {
 
     if (tab === 'LOGS') {
       loadServerLogs();
+    }
+
+    if (tab === 'BACKUPS') {
+      loadBackups();
     }
 
     return () => {
@@ -278,6 +292,142 @@ const SuperAdmin: React.FC<Props> = ({ sessionToken, onExit }) => {
     } catch (err) {
       console.error('Failed to clear logs', err);
     }
+  };
+
+  const loadBackups = async () => {
+    setBackupsLoading(true);
+    try {
+      const response = await fetch('/api/super-admin/backups/list', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionToken })
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setBackups(data.backups || []);
+        setBackupConfig(data.config || null);
+      }
+    } catch (err) {
+      console.error('Failed to load backups', err);
+    } finally {
+      setBackupsLoading(false);
+    }
+  };
+
+  const handleCreateCheckpoint = async () => {
+    setBackupCreating(true);
+    setError('');
+    setSuccessMessage('');
+    try {
+      const response = await fetch('/api/super-admin/backups/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionToken, label: checkpointLabel.trim() || undefined })
+      });
+      if (!response.ok) {
+        if (response.status === 401) throw new Error('Super admin session expired. Please log in again.');
+        if (response.status === 409) throw new Error('A backup is already in progress. Please wait.');
+        throw new Error('Failed to create checkpoint');
+      }
+      setCheckpointLabel('');
+      setSuccessMessage('Checkpoint created successfully');
+      setTimeout(() => setSuccessMessage(''), 3000);
+      loadBackups();
+    } catch (err: any) {
+      setError(err.message || 'Failed to create checkpoint');
+    } finally {
+      setBackupCreating(false);
+    }
+  };
+
+  const handleDownloadServerBackup = async (backupId: string) => {
+    try {
+      const response = await fetch('/api/super-admin/backups/download', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionToken, backupId })
+      });
+      if (!response.ok) throw new Error('Download failed');
+      const blob = await response.blob();
+      const header = response.headers.get('Content-Disposition');
+      const match = header ? /filename="([^"]+)"/.exec(header) : null;
+      const filename = match?.[1] || 'backup.json.gz';
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError('Failed to download backup');
+    }
+  };
+
+  const handleRestoreServerBackup = async (backup: BackupEntry) => {
+    if (!confirm(`Restore data from backup "${backup.label || new Date(backup.createdAt).toLocaleString()}"?\n\nA pre-restore snapshot will be created automatically before restoring.`)) {
+      return;
+    }
+    setBackupRestoring(backup.id);
+    setError('');
+    setSuccessMessage('');
+    try {
+      const response = await fetch('/api/super-admin/backups/restore', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionToken, backupId: backup.id })
+      });
+      if (!response.ok) {
+        if (response.status === 401) throw new Error('Super admin session expired. Please log in again.');
+        throw new Error('Failed to restore backup');
+      }
+      setSuccessMessage('Data restored successfully');
+      setTimeout(() => setSuccessMessage(''), 5000);
+      loadBackups();
+      loadTeams();
+    } catch (err: any) {
+      setError(err.message || 'Failed to restore backup');
+    } finally {
+      setBackupRestoring(null);
+    }
+  };
+
+  const handleDeleteServerBackup = async (backup: BackupEntry) => {
+    if (!confirm(`Delete backup "${backup.label || backup.filename}"?`)) return;
+    try {
+      const response = await fetch('/api/super-admin/backups/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionToken, backupId: backup.id })
+      });
+      if (response.ok) {
+        setSuccessMessage('Backup deleted');
+        setTimeout(() => setSuccessMessage(''), 3000);
+        loadBackups();
+      }
+    } catch (err) {
+      setError('Failed to delete backup');
+    }
+  };
+
+  const handleToggleProtected = async (backup: BackupEntry) => {
+    try {
+      const response = await fetch('/api/super-admin/backups/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionToken, backupId: backup.id, protected: !backup.protected })
+      });
+      if (response.ok) {
+        loadBackups();
+      }
+    } catch (err) {
+      setError('Failed to update backup');
+    }
+  };
+
+  const formatBackupSize = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
   const loadTeams = async () => {
@@ -1056,6 +1206,22 @@ const SuperAdmin: React.FC<Props> = ({ sessionToken, onExit }) => {
               </span>
             )}
           </button>
+          <button
+            onClick={() => setTab('BACKUPS')}
+            className={`px-6 py-3 font-bold text-sm flex items-center transition ${
+              tab === 'BACKUPS'
+                ? 'border-b-2 border-teal-600 text-teal-600'
+                : 'text-slate-500 hover:text-teal-600'
+            }`}
+          >
+            <span className="material-symbols-outlined mr-2">backup</span>
+            Backups
+            {backups.length > 0 && (
+              <span className="ml-2 bg-teal-100 text-teal-700 text-xs rounded-full px-2 py-0.5">
+                {backups.length}
+              </span>
+            )}
+          </button>
         </div>
 
         {loading && tab === 'TEAMS' ? (
@@ -1640,6 +1806,171 @@ const SuperAdmin: React.FC<Props> = ({ sessionToken, onExit }) => {
                           </td>
                           <td className="p-3 text-slate-700 font-mono text-xs break-all">
                             {log.message}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Backups Tab */}
+        {tab === 'BACKUPS' && (
+          <div>
+            {/* Backup Configuration Summary */}
+            {backupConfig && (
+              <div className="bg-white rounded-lg shadow p-4 mb-4">
+                <h3 className="text-sm font-semibold text-slate-700 mb-2 flex items-center gap-2">
+                  <span className="material-symbols-outlined text-base text-teal-600">settings</span>
+                  Configuration
+                </h3>
+                <div className="flex flex-wrap gap-4 text-sm text-slate-600">
+                  <span>Auto backups: <span className={`font-medium ${backupConfig.enabled ? 'text-green-600' : 'text-red-600'}`}>{backupConfig.enabled ? 'Enabled' : 'Disabled'}</span></span>
+                  <span>Interval: <span className="font-medium">{backupConfig.intervalHours}h</span></span>
+                  <span>Max kept: <span className="font-medium">{backupConfig.maxCount}</span></span>
+                  <span>Startup backup: <span className={`font-medium ${backupConfig.onStartup ? 'text-green-600' : 'text-slate-400'}`}>{backupConfig.onStartup ? 'Yes' : 'No'}</span></span>
+                  <span>Directory: <code className="text-xs bg-slate-100 px-1 rounded">{backupConfig.backupDir}</code></span>
+                </div>
+              </div>
+            )}
+
+            {/* Create Checkpoint */}
+            <div className="bg-white rounded-lg shadow p-4 mb-6">
+              <h3 className="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
+                <span className="material-symbols-outlined text-base text-teal-600">add_circle</span>
+                Create Checkpoint
+              </h3>
+              <div className="flex gap-3">
+                <input
+                  type="text"
+                  value={checkpointLabel}
+                  onChange={(e) => setCheckpointLabel(e.target.value)}
+                  placeholder="Optional label (e.g. Before v10 upgrade)"
+                  className="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                  maxLength={100}
+                />
+                <button
+                  onClick={handleCreateCheckpoint}
+                  disabled={backupCreating}
+                  className={`px-4 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 ${
+                    backupCreating
+                      ? 'bg-slate-200 text-slate-500 cursor-not-allowed'
+                      : 'bg-teal-600 text-white hover:bg-teal-700'
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-base">
+                    {backupCreating ? 'sync' : 'save'}
+                  </span>
+                  {backupCreating ? 'Creating...' : 'Create Checkpoint'}
+                </button>
+              </div>
+            </div>
+
+            {/* Backups List */}
+            {backupsLoading ? (
+              <div className="text-center py-12">
+                <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600"></div>
+                <p className="text-slate-500 mt-4">Loading backups...</p>
+              </div>
+            ) : backups.length === 0 ? (
+              <div className="bg-white rounded-xl shadow p-12 text-center">
+                <span className="material-symbols-outlined text-6xl mb-4 text-slate-300">cloud_off</span>
+                <p className="text-slate-500 text-lg">No backups yet</p>
+                <p className="text-slate-400 text-sm mt-2">
+                  Backups will appear here after the first scheduled backup or when you create a checkpoint.
+                </p>
+              </div>
+            ) : (
+              <div className="bg-white rounded-xl shadow overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-slate-50 border-b border-slate-200">
+                      <tr>
+                        <th className="text-left p-3 font-semibold text-slate-600">Type</th>
+                        <th className="text-left p-3 font-semibold text-slate-600">Label / Date</th>
+                        <th className="text-left p-3 font-semibold text-slate-600">Teams</th>
+                        <th className="text-left p-3 font-semibold text-slate-600">Size</th>
+                        <th className="text-center p-3 font-semibold text-slate-600">Protected</th>
+                        <th className="text-right p-3 font-semibold text-slate-600">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {backups.map((backup) => (
+                        <tr key={backup.id} className="border-b border-slate-100 hover:bg-slate-50">
+                          <td className="p-3">
+                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-bold uppercase ${
+                              backup.type === 'manual'
+                                ? 'bg-teal-100 text-teal-700'
+                                : backup.type === 'startup'
+                                ? 'bg-blue-100 text-blue-700'
+                                : 'bg-slate-100 text-slate-600'
+                            }`}>
+                              <span className="material-symbols-outlined text-xs">
+                                {backup.type === 'manual' ? 'flag' : backup.type === 'startup' ? 'rocket_launch' : 'schedule'}
+                              </span>
+                              {backup.type}
+                            </span>
+                          </td>
+                          <td className="p-3">
+                            {backup.label && (
+                              <div className="font-medium text-slate-800">{backup.label}</div>
+                            )}
+                            <div className="text-xs text-slate-500">
+                              {new Date(backup.createdAt).toLocaleString()}
+                            </div>
+                          </td>
+                          <td className="p-3 text-slate-600">{backup.teamCount}</td>
+                          <td className="p-3 text-slate-600 font-mono text-xs">{formatBackupSize(backup.sizeBytes)}</td>
+                          <td className="p-3 text-center">
+                            <button
+                              onClick={() => handleToggleProtected(backup)}
+                              className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition ${
+                                backup.protected
+                                  ? 'bg-amber-100 text-amber-700 hover:bg-amber-200'
+                                  : 'bg-slate-100 text-slate-400 hover:bg-slate-200'
+                              }`}
+                              title={backup.protected ? 'Protected from auto-cleanup' : 'Click to protect from auto-cleanup'}
+                            >
+                              <span className="material-symbols-outlined text-xs">
+                                {backup.protected ? 'lock' : 'lock_open'}
+                              </span>
+                              {backup.protected ? 'Yes' : 'No'}
+                            </button>
+                          </td>
+                          <td className="p-3">
+                            <div className="flex justify-end gap-1">
+                              <button
+                                onClick={() => handleDownloadServerBackup(backup.id)}
+                                className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded"
+                                title="Download"
+                              >
+                                <span className="material-symbols-outlined text-base">download</span>
+                              </button>
+                              <button
+                                onClick={() => handleRestoreServerBackup(backup)}
+                                disabled={backupRestoring === backup.id}
+                                className={`p-1.5 rounded ${
+                                  backupRestoring === backup.id
+                                    ? 'text-slate-300 cursor-not-allowed'
+                                    : 'text-slate-500 hover:text-amber-600 hover:bg-amber-50'
+                                }`}
+                                title="Restore"
+                              >
+                                <span className="material-symbols-outlined text-base">
+                                  {backupRestoring === backup.id ? 'sync' : 'restore'}
+                                </span>
+                              </button>
+                              <button
+                                onClick={() => handleDeleteServerBackup(backup)}
+                                className="p-1.5 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded"
+                                title="Delete"
+                              >
+                                <span className="material-symbols-outlined text-base">delete</span>
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}

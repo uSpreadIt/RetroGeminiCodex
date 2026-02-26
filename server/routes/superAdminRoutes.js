@@ -11,7 +11,8 @@ const registerSuperAdminRoutes = ({
   logService,
   escapeHtml,
   superAdminPassword,
-  sessionCache
+  sessionCache,
+  backupService
 }) => {
   const shouldSkipSuperAdminLimit = () => !superAdminPassword;
 
@@ -647,6 +648,139 @@ This notification was sent from RetroGemini.
     } catch (err) {
       console.error('[Server] Failed to create backup', err);
       res.status(500).json({ error: 'backup_failed' });
+    }
+  });
+
+  // ---------------------------------------------------------------------------
+  // Server-side backup management endpoints
+  // ---------------------------------------------------------------------------
+
+  app.post('/api/super-admin/backups/list', superAdminActionLimiter, async (req, res) => {
+    if (!tokenService.validateSuperAdminAuth(req.body)) {
+      return res.status(401).json({ error: 'unauthorized' });
+    }
+
+    try {
+      const backups = await backupService.listBackups();
+      const config = backupService.getBackupConfig();
+      res.json({ backups, config });
+    } catch (err) {
+      console.error('[Server] Failed to list backups', err);
+      res.status(500).json({ error: 'list_failed' });
+    }
+  });
+
+  app.post('/api/super-admin/backups/create', superAdminActionLimiter, async (req, res) => {
+    if (!tokenService.validateSuperAdminAuth(req.body)) {
+      return res.status(401).json({ error: 'unauthorized' });
+    }
+
+    try {
+      const { label } = req.body || {};
+      const entry = await backupService.createBackup('manual', label || undefined);
+      if (!entry) {
+        return res.status(409).json({ error: 'backup_in_progress' });
+      }
+      res.json({ success: true, backup: entry });
+    } catch (err) {
+      console.error('[Server] Failed to create manual backup', err);
+      res.status(500).json({ error: 'create_failed' });
+    }
+  });
+
+  app.post('/api/super-admin/backups/download', superAdminActionLimiter, async (req, res) => {
+    if (!tokenService.validateSuperAdminAuth(req.body)) {
+      return res.status(401).json({ error: 'unauthorized' });
+    }
+
+    try {
+      const { backupId } = req.body || {};
+      if (!backupId) {
+        return res.status(400).json({ error: 'missing_backup_id' });
+      }
+
+      const result = await backupService.getBackupData(backupId);
+      if (!result) {
+        return res.status(404).json({ error: 'backup_not_found' });
+      }
+
+      res.setHeader('Content-Type', 'application/gzip');
+      res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
+      res.setHeader('Cache-Control', 'no-store');
+      res.send(result.data);
+    } catch (err) {
+      console.error('[Server] Failed to download backup', err);
+      res.status(500).json({ error: 'download_failed' });
+    }
+  });
+
+  app.post('/api/super-admin/backups/restore', superAdminActionLimiter, async (req, res) => {
+    if (!tokenService.validateSuperAdminAuth(req.body)) {
+      return res.status(401).json({ error: 'unauthorized' });
+    }
+
+    try {
+      const { backupId } = req.body || {};
+      if (!backupId) {
+        return res.status(400).json({ error: 'missing_backup_id' });
+      }
+
+      // Create a pre-restore backup first
+      await backupService.createBackup('auto', 'Pre-restore snapshot');
+
+      const entry = await backupService.restoreFromBackup(backupId);
+      res.json({ success: true, restored: entry });
+    } catch (err) {
+      console.error('[Server] Failed to restore from backup', err);
+      res.status(500).json({ error: 'restore_failed' });
+    }
+  });
+
+  app.post('/api/super-admin/backups/delete', superAdminActionLimiter, async (req, res) => {
+    if (!tokenService.validateSuperAdminAuth(req.body)) {
+      return res.status(401).json({ error: 'unauthorized' });
+    }
+
+    try {
+      const { backupId } = req.body || {};
+      if (!backupId) {
+        return res.status(400).json({ error: 'missing_backup_id' });
+      }
+
+      const success = await backupService.deleteBackup(backupId);
+      if (!success) {
+        return res.status(404).json({ error: 'backup_not_found' });
+      }
+      res.json({ success: true });
+    } catch (err) {
+      console.error('[Server] Failed to delete backup', err);
+      res.status(500).json({ error: 'delete_failed' });
+    }
+  });
+
+  app.post('/api/super-admin/backups/update', superAdminActionLimiter, async (req, res) => {
+    if (!tokenService.validateSuperAdminAuth(req.body)) {
+      return res.status(401).json({ error: 'unauthorized' });
+    }
+
+    try {
+      const { backupId, label, protected: isProtected } = req.body || {};
+      if (!backupId) {
+        return res.status(400).json({ error: 'missing_backup_id' });
+      }
+
+      const updates = {};
+      if (label !== undefined) updates.label = label;
+      if (isProtected !== undefined) updates.protected = isProtected;
+
+      const entry = await backupService.updateBackup(backupId, updates);
+      if (!entry) {
+        return res.status(404).json({ error: 'backup_not_found' });
+      }
+      res.json({ success: true, backup: entry });
+    } catch (err) {
+      console.error('[Server] Failed to update backup', err);
+      res.status(500).json({ error: 'update_failed' });
     }
   });
 

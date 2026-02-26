@@ -194,6 +194,35 @@ kubectl rollout restart deployment/retrogemini
 
 ---
 
+## Automated backups
+
+RetroGemini includes an automatic server-side backup system that creates compressed snapshots of all data. Backups are stored in the PostgreSQL database (in a dedicated `backups` table), so they work seamlessly with multi-pod deployments — no extra PVC required.
+
+### How it works
+
+- **Startup backup**: A snapshot is created each time the server starts (before a new version runs)
+- **Scheduled backups**: Automatic backups run at a configurable interval (default: every 24 hours)
+- **Manual checkpoints**: Named snapshots can be created from the super admin panel
+- **Retention**: Old automatic backups are pruned when the limit is reached; protected backups are kept
+- **Restore**: Any backup can be restored from the super admin panel (a pre-restore snapshot is created automatically)
+
+### Configuration
+
+These environment variables are set directly in `deployment.yaml` (not in secrets — safe to re-apply):
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `BACKUP_ENABLED` | `true` | Enable automatic backups |
+| `BACKUP_INTERVAL_HOURS` | `24` | Hours between automatic backups |
+| `BACKUP_MAX_COUNT` | `7` | Max automatic backups to keep |
+| `BACKUP_ON_STARTUP` | `true` | Create backup when server starts |
+
+### Multi-pod support
+
+The deployment uses 2 replicas by default for zero-downtime rolling updates. Since backups are stored in PostgreSQL, all pods can read and write backups without volume conflicts. Startup backups are deduplicated (skipped if one was created within 5 minutes).
+
+---
+
 ## Troubleshooting
 
 ### PostgreSQL pod stuck in Pending

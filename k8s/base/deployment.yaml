@@ -91,6 +91,15 @@ spec:
                   name: retrogemini-smtp
                   key: FROM_EMAIL
                   optional: true
+            # Backup configuration (plain values - safe to re-apply)
+            - name: BACKUP_ENABLED
+              value: "true"
+            - name: BACKUP_INTERVAL_HOURS
+              value: "24"
+            - name: BACKUP_MAX_COUNT
+              value: "7"
+            - name: BACKUP_ON_STARTUP
+              value: "true"
           resources:
             limits:
               memory: 384Mi

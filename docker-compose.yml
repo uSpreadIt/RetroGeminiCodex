@@ -31,6 +31,12 @@ services:
       # Optional: Super admin panel
       # - SUPER_ADMIN_PASSWORD=change-me
       #
+      # Optional: Automated backup configuration
+      # - BACKUP_ENABLED=true
+      # - BACKUP_INTERVAL_HOURS=24
+      # - BACKUP_MAX_COUNT=7
+      # - BACKUP_ON_STARTUP=true
+      #
       # Optional: Corporate proxy support
       # - HTTP_PROXY=http://proxy.example.com:8080
       # - HTTPS_PROXY=http://proxy.example.com:8080
