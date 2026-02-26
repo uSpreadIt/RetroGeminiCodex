@@ -205,7 +205,7 @@ npx playwright show-report
 
 On Windows, run these commands in PowerShell or Command Prompt from the project root.
 
-In GitHub Actions, the uploaded E2E artifact now includes both `playwright-report/` and `test-results/` so HTML report assets and recorded videos are available for download.
+In GitHub Actions, two E2E artifacts are uploaded: `playwright-report` (HTML report) and `playwright-videos` (all `*.webm` recordings from `test-results/`).
 
 ### Project Structure
 
