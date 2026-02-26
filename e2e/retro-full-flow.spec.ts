@@ -292,6 +292,11 @@ test.describe('Full Retrospective Flow', () => {
     await expect(facilitator.locator('span.font-bold').filter({ hasText: 'Vote' })).toBeVisible({ timeout: 5_000 });
     await expect(participant.getByText('votes remaining')).toBeVisible({ timeout: 5_000 });
 
+    // Ensure both sides are voting on the same content
+    await expect(facilitator.getByText('Good Practices')).toBeVisible({ timeout: 5_000 });
+    await expect(participant.getByText('Good Practices')).toBeVisible({ timeout: 5_000 });
+    await expect(participant.getByText('Stop long meetings')).toBeVisible({ timeout: 5_000 });
+
     // Enable "1 vote/item" checkbox
     const oneVoteLabel = facilitator.locator('label').filter({ hasText: '1 vote/item' });
     await oneVoteLabel.locator('input[type="checkbox"]').check();
@@ -314,12 +319,17 @@ test.describe('Full Retrospective Flow', () => {
     await participantTicketAdd.click();
     await waitForSync(800);
 
+    // Remaining vote counters should reflect each user's own votes
+    await expect(facilitator.getByText('4 votes remaining')).toBeVisible({ timeout: 5_000 });
+    await expect(participant.getByText('4 votes remaining')).toBeVisible({ timeout: 5_000 });
+
     // Participant also votes on "Continue pair programming"
     const pairProgText = participant.getByText('Continue pair programming');
     const pairProgCard = pairProgText.locator('xpath=ancestor::div[contains(@class, "shadow-sm")]').first();
     const pairProgAdd = pairProgCard.locator('button:has(span:text("add"))');
     await pairProgAdd.click();
     await waitForSync();
+    await expect(participant.getByText('3 votes remaining')).toBeVisible({ timeout: 5_000 });
 
     // Move to Discuss phase
     await facilitator.getByRole('button', { name: 'Next Phase' }).click();
@@ -358,12 +368,17 @@ test.describe('Full Retrospective Flow', () => {
     await facilitatorThumbUp.click();
     await waitForSync();
 
+    // Keep proposal visible on both sides after voting
+    await expect(facilitator.getByText('Schedule weekly code reviews')).toBeVisible({ timeout: 5_000 });
+    await expect(participant.getByText('Schedule weekly code reviews')).toBeVisible({ timeout: 5_000 });
+
     // Facilitator accepts the proposal
     await facilitator.getByRole('button', { name: 'Accept' }).first().click();
     await waitForSync();
 
-    // Verify the accepted action is shown with "Accepted:" prefix
+    // Verify the accepted action is shown with "Accepted:" prefix on both clients
     await expect(facilitator.getByText('Accepted:')).toBeVisible({ timeout: 5_000 });
+    await expect(participant.getByText('Accepted:')).toBeVisible({ timeout: 5_000 });
 
     // Move to Review phase
     await facilitator.getByRole('button', { name: 'Next Phase' }).click();
@@ -381,6 +396,9 @@ test.describe('Full Retrospective Flow', () => {
     const assigneeSelect = facilitator.locator('select').filter({ hasText: 'Unassigned' }).first();
     await assigneeSelect.selectOption({ label: PARTICIPANT_NAME });
     await waitForSync();
+
+    // Participant should see assignment synced in their own Review view
+    await expect(participant.locator('select').first()).toHaveValue(await assigneeSelect.inputValue());
 
     // Move to Close phase
     await facilitator.getByRole('button', { name: 'Next: Close Retro' }).click();
@@ -411,9 +429,9 @@ test.describe('Full Retrospective Flow', () => {
     await facilitator.getByText('Reveal Results').click();
     await waitForSync();
 
-    // Both should see the average score (displayed as "X.X / 5")
-    await expect(facilitator.getByText('/ 5')).toBeVisible({ timeout: 5_000 });
-    await expect(participant.getByText('/ 5')).toBeVisible({ timeout: 5_000 });
+    // Both should see the average score (4 and 5 => 4.5 / 5)
+    await expect(facilitator.getByText('4.5 / 5')).toBeVisible({ timeout: 5_000 });
+    await expect(participant.getByText('4.5 / 5')).toBeVisible({ timeout: 5_000 });
 
     // Facilitator can return to dashboard
     await expect(facilitator.getByRole('button', { name: 'Return to Dashboard' })).toBeVisible();
