@@ -29,15 +29,23 @@ test.describe('Full Retrospective Flow', () => {
   let participant: Page;
 
   test.beforeAll(async ({ browser }) => {
-    facilitatorContext = await browser.newContext();
-    participantContext = await browser.newContext();
+    facilitatorContext = await browser.newContext({
+      recordVideo: {
+        dir: 'test-results/videos/facilitator',
+      },
+    });
+    participantContext = await browser.newContext({
+      recordVideo: {
+        dir: 'test-results/videos/participant',
+      },
+    });
     facilitator = await facilitatorContext.newPage();
     participant = await participantContext.newPage();
   });
 
   test.afterAll(async () => {
-    await facilitatorContext.close();
-    await participantContext.close();
+    await facilitatorContext?.close();
+    await participantContext?.close();
   });
 
   test('Complete retro session with facilitator and participant', async () => {
