@@ -8,6 +8,7 @@ resources:
   # Secrets are NOT included - create them manually BEFORE applying
   # See k8s/secrets-templates/ for example files
   - pvc.yaml
+  - backup-pvc.yaml
   - postgresql-deployment.yaml
   - postgresql-service.yaml
   - deployment.yaml

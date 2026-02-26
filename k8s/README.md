@@ -194,6 +194,47 @@ kubectl rollout restart deployment/retrogemini
 
 ---
 
+## Automated backups
+
+RetroGemini includes an automatic server-side backup system that creates `.json.gz` snapshots of all data. Backups are stored on a dedicated PVC (`retrogemini-backups`) mounted at `/data/backups`.
+
+### How it works
+
+- **Startup backup**: A snapshot is created each time the server starts (before a new version runs)
+- **Scheduled backups**: Automatic backups run at a configurable interval (default: every 24 hours)
+- **Manual checkpoints**: Named snapshots can be created from the super admin panel
+- **Retention**: Old automatic backups are pruned when the limit is reached; protected backups are kept
+- **Restore**: Any backup can be restored from the super admin panel (a pre-restore snapshot is created automatically)
+
+### Configuration
+
+These environment variables are set directly in `deployment.yaml` (not in secrets — safe to re-apply):
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `BACKUP_ENABLED` | `true` | Enable automatic backups |
+| `BACKUP_INTERVAL_HOURS` | `24` | Hours between automatic backups |
+| `BACKUP_MAX_COUNT` | `7` | Max automatic backups to keep |
+| `BACKUP_ON_STARTUP` | `true` | Create backup when server starts |
+
+### Accessing backup files
+
+```bash
+# List backup files on the PVC
+kubectl exec deployment/retrogemini -- ls -la /data/backups/
+
+# Copy a backup file locally
+kubectl cp retrogemini/$(kubectl get pod -l app=retrogemini -o jsonpath='{.items[0].metadata.name}'):/data/backups/retrogemini-backup-2025-01-01T00-00-00-000Z.json.gz ./local-backup.json.gz
+```
+
+### Multi-pod coordination
+
+The deployment uses 2 replicas by default. All pods share the same backup PVC and PostgreSQL database. A file-based lock (`backups.lock`) prevents concurrent backup creation. Startup backups are deduplicated (skipped if one was created within 5 minutes).
+
+The PVC uses `ReadWriteOnce` access mode, which works when all pods are on the same node. If your cluster schedules pods across multiple nodes, change the PVC to `ReadWriteMany` or use a shared storage class (NFS, CephFS).
+
+---
+
 ## Troubleshooting
 
 ### PostgreSQL pod stuck in Pending

@@ -11,6 +11,7 @@ import { createMailerService } from './server/services/mailerService.js';
 import { createTeamService } from './server/services/teamService.js';
 import { createTokenService } from './server/services/sessionTokens.js';
 import { createVersionService } from './server/services/versionService.js';
+import { createBackupService } from './server/services/backupService.js';
 import { initSocketAdapter } from './server/services/socketAdapter.js';
 import { registerSocketHandlers } from './server/services/socketHandlers.js';
 import { escapeHtml, sanitizeEmailLink, secureCompare, hashResetToken, pruneResetTokens } from './server/services/security.js';
@@ -61,6 +62,7 @@ const tokenService = createTokenService({
   superAdminPassword: SUPER_ADMIN_PASSWORD
 });
 const teamService = createTeamService({ dataStore });
+const backupService = createBackupService({ dataStore, logService });
 const sessionCache = new Map();
 
 logService.attachConsole();
@@ -116,7 +118,8 @@ registerSuperAdminRoutes({
   logService,
   escapeHtml,
   superAdminPassword: SUPER_ADMIN_PASSWORD,
-  sessionCache
+  sessionCache,
+  backupService
 });
 
 registerSocketHandlers({ io, dataStore, sessionCache });
@@ -142,6 +145,8 @@ const startServer = async () => {
     await dataStore.initDatabase();
     await dataStore.migrateFromLegacyFormat();
     await initSocketAdapter({ io, dataStore });
+    await backupService.createStartupBackup();
+    backupService.startScheduler();
 
     server.listen(PORT, () => {
       console.log(`[Server] Running on port ${PORT}`);
