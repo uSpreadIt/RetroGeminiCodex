@@ -1,8 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import fs from 'fs';
-import { join } from 'path';
-import { gunzipSync } from 'zlib';
-import os from 'os';
+import { gunzipSync, gzipSync } from 'zlib';
 
 // Dynamic import to allow env var mocking
 let createBackupService: typeof import('../server/services/backupService').createBackupService;
@@ -17,9 +14,66 @@ const mockPersistedData = {
   orphanedFeedbacks: []
 };
 
-const createMockDataStore = () => ({
+// In-memory backup store for testing
+const createInMemoryBackupStore = () => {
+  let backups: Array<{ id: string; filename: string; type: string; label?: string; createdAt: string; sizeBytes: number; teamCount: number; protected: boolean; data: Buffer }> = [];
+
+  return {
+    saveBackup: vi.fn(async (entry: any, compressedData: Buffer) => {
+      backups.push({ ...entry, protected: entry.protected || false, data: compressedData });
+    }),
+    listBackups: vi.fn(async () => {
+      return backups
+        .map(({ data: _data, ...rest }) => rest)
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    }),
+    getBackupData: vi.fn(async (id: string) => {
+      const backup = backups.find((b) => b.id === id);
+      if (!backup) return null;
+      return { data: backup.data, filename: backup.filename };
+    }),
+    deleteBackup: vi.fn(async (id: string) => {
+      const idx = backups.findIndex((b) => b.id === id);
+      if (idx === -1) return false;
+      backups.splice(idx, 1);
+      return true;
+    }),
+    updateBackup: vi.fn(async (id: string, updates: any) => {
+      const backup = backups.find((b) => b.id === id);
+      if (!backup) return null;
+      if (updates.label !== undefined) backup.label = updates.label || undefined;
+      if (updates.protected !== undefined) backup.protected = !!updates.protected;
+      const { data: _data, ...entry } = backup;
+      return entry;
+    }),
+    getRecentStartupBackup: vi.fn(async (withinMs: number) => {
+      const cutoff = Date.now() - withinMs;
+      const recent = backups.find(
+        (b) => b.type === 'startup' && new Date(b.createdAt).getTime() > cutoff
+      );
+      return recent ? { id: recent.id } : null;
+    }),
+    purgeOldBackups: vi.fn(async (types: string[], maxCount: number) => {
+      const matching = backups
+        .filter((b) => types.includes(b.type) && !b.protected)
+        .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+      const excess = Math.max(0, matching.length - maxCount);
+      const toRemove = matching.slice(0, excess);
+      for (const item of toRemove) {
+        const idx = backups.findIndex((b) => b.id === item.id);
+        if (idx !== -1) backups.splice(idx, 1);
+      }
+      return excess;
+    }),
+    // Reset store between tests
+    _reset: () => { backups = []; }
+  };
+};
+
+const createMockDataStore = (backupStore: ReturnType<typeof createInMemoryBackupStore>) => ({
   loadPersistedData: vi.fn().mockResolvedValue(mockPersistedData),
-  savePersistedData: vi.fn().mockResolvedValue(mockPersistedData)
+  savePersistedData: vi.fn().mockResolvedValue(mockPersistedData),
+  ...backupStore
 });
 
 const createMockLogService = () => ({
@@ -27,14 +81,11 @@ const createMockLogService = () => ({
 });
 
 describe('Backup Service', () => {
-  let backupDir: string;
+  let backupStore: ReturnType<typeof createInMemoryBackupStore>;
   let dataStore: ReturnType<typeof createMockDataStore>;
   let logService: ReturnType<typeof createMockLogService>;
 
   beforeEach(async () => {
-    backupDir = fs.mkdtempSync(join(os.tmpdir(), 'retro-backup-test-'));
-
-    process.env.BACKUP_DIR = backupDir;
     process.env.BACKUP_ENABLED = 'true';
     process.env.BACKUP_INTERVAL_HOURS = '24';
     process.env.BACKUP_MAX_COUNT = '3';
@@ -44,18 +95,12 @@ describe('Backup Service', () => {
     const mod = await import('../server/services/backupService');
     createBackupService = mod.createBackupService;
 
-    dataStore = createMockDataStore();
+    backupStore = createInMemoryBackupStore();
+    dataStore = createMockDataStore(backupStore);
     logService = createMockLogService();
   });
 
   afterEach(() => {
-    // Clean up test directory
-    try {
-      fs.rmSync(backupDir, { recursive: true, force: true });
-    } catch {
-      // Ignore cleanup errors
-    }
-    delete process.env.BACKUP_DIR;
     delete process.env.BACKUP_ENABLED;
     delete process.env.BACKUP_INTERVAL_HOURS;
     delete process.env.BACKUP_MAX_COUNT;
@@ -63,7 +108,7 @@ describe('Backup Service', () => {
   });
 
   describe('createBackup', () => {
-    it('should create a gzip backup file and manifest entry', async () => {
+    it('should create a backup entry stored via dataStore', async () => {
       const service = createBackupService({ dataStore, logService });
       const entry = await service.createBackup('manual', 'Test checkpoint');
 
@@ -75,24 +120,25 @@ describe('Backup Service', () => {
       expect(entry!.protected).toBe(false);
       expect(entry!.id).toMatch(/^backup_\d+_[a-f0-9]+$/);
 
-      // Verify file exists and is valid gzip
-      const filePath = join(backupDir, entry!.filename);
-      expect(fs.existsSync(filePath)).toBe(true);
+      // Verify data was saved to dataStore
+      expect(dataStore.saveBackup).toHaveBeenCalledOnce();
+      const [savedEntry, savedData] = dataStore.saveBackup.mock.calls[0];
+      expect(savedEntry.id).toBe(entry!.id);
 
-      const compressed = fs.readFileSync(filePath);
-      const data = JSON.parse(gunzipSync(compressed).toString('utf8'));
-      expect(data.teams).toHaveLength(2);
-      expect(data.teams[0].name).toBe('Alpha');
+      // Verify the compressed data is valid
+      const decompressed = JSON.parse(gunzipSync(savedData).toString('utf8'));
+      expect(decompressed.teams).toHaveLength(2);
+      expect(decompressed.teams[0].name).toBe('Alpha');
     });
 
-    it('should add entry to manifest', async () => {
+    it('should add entry to listing', async () => {
       const service = createBackupService({ dataStore, logService });
       await service.createBackup('auto', 'First');
       await service.createBackup('manual', 'Second');
 
-      const backups = service.listBackups();
+      const backups = await service.listBackups();
       expect(backups).toHaveLength(2);
-      const labels = backups.map((b) => b.label);
+      const labels = backups.map((b: any) => b.label);
       expect(labels).toContain('First');
       expect(labels).toContain('Second');
     });
@@ -106,9 +152,9 @@ describe('Backup Service', () => {
   });
 
   describe('listBackups', () => {
-    it('should return empty array when no backups exist', () => {
+    it('should return empty array when no backups exist', async () => {
       const service = createBackupService({ dataStore, logService });
-      expect(service.listBackups()).toEqual([]);
+      expect(await service.listBackups()).toEqual([]);
     });
 
     it('should return backups sorted by date descending', async () => {
@@ -117,7 +163,7 @@ describe('Backup Service', () => {
       await service.createBackup('auto', 'Second');
       await service.createBackup('manual', 'Third');
 
-      const backups = service.listBackups();
+      const backups = await service.listBackups();
       expect(backups).toHaveLength(3);
       // Most recent first
       for (let i = 0; i < backups.length - 1; i++) {
@@ -135,44 +181,40 @@ describe('Backup Service', () => {
       expect(config.enabled).toBe(true);
       expect(config.intervalHours).toBe(24);
       expect(config.maxCount).toBe(3);
-      expect(config.backupDir).toBe(backupDir);
       expect(config.onStartup).toBe(true);
     });
   });
 
-  describe('getBackupPath', () => {
-    it('should return file path for existing backup', async () => {
+  describe('getBackupData', () => {
+    it('should return data for existing backup', async () => {
       const service = createBackupService({ dataStore, logService });
       const entry = await service.createBackup('manual');
 
-      const result = service.getBackupPath(entry!.id);
+      const result = await service.getBackupData(entry!.id);
       expect(result).not.toBeNull();
       expect(result!.filename).toBe(entry!.filename);
-      expect(fs.existsSync(result!.filePath)).toBe(true);
+      expect(result!.data).toBeInstanceOf(Buffer);
     });
 
-    it('should return null for non-existent backup', () => {
+    it('should return null for non-existent backup', async () => {
       const service = createBackupService({ dataStore, logService });
-      expect(service.getBackupPath('non-existent')).toBeNull();
+      expect(await service.getBackupData('non-existent')).toBeNull();
     });
   });
 
   describe('deleteBackup', () => {
-    it('should delete backup file and manifest entry', async () => {
+    it('should delete backup from dataStore', async () => {
       const service = createBackupService({ dataStore, logService });
       const entry = await service.createBackup('manual');
-      const filePath = join(backupDir, entry!.filename);
 
-      expect(fs.existsSync(filePath)).toBe(true);
-      const result = service.deleteBackup(entry!.id);
+      const result = await service.deleteBackup(entry!.id);
       expect(result).toBe(true);
-      expect(fs.existsSync(filePath)).toBe(false);
-      expect(service.listBackups()).toHaveLength(0);
+      expect(await service.listBackups()).toHaveLength(0);
     });
 
-    it('should return false for non-existent backup', () => {
+    it('should return false for non-existent backup', async () => {
       const service = createBackupService({ dataStore, logService });
-      expect(service.deleteBackup('non-existent')).toBe(false);
+      expect(await service.deleteBackup('non-existent')).toBe(false);
     });
   });
 
@@ -192,15 +234,6 @@ describe('Backup Service', () => {
       const service = createBackupService({ dataStore, logService });
       await expect(service.restoreFromBackup('non-existent')).rejects.toThrow('Backup not found');
     });
-
-    it('should throw if backup file is missing', async () => {
-      const service = createBackupService({ dataStore, logService });
-      const entry = await service.createBackup('manual');
-      // Delete the file but keep the manifest entry
-      fs.unlinkSync(join(backupDir, entry!.filename));
-
-      await expect(service.restoreFromBackup(entry!.id)).rejects.toThrow('Backup file missing');
-    });
   });
 
   describe('updateBackup', () => {
@@ -208,10 +241,10 @@ describe('Backup Service', () => {
       const service = createBackupService({ dataStore, logService });
       const entry = await service.createBackup('auto');
 
-      const updated = service.updateBackup(entry!.id, { label: 'New label' });
+      const updated = await service.updateBackup(entry!.id, { label: 'New label' });
       expect(updated!.label).toBe('New label');
 
-      const backups = service.listBackups();
+      const backups = await service.listBackups();
       expect(backups[0].label).toBe('New label');
     });
 
@@ -219,13 +252,13 @@ describe('Backup Service', () => {
       const service = createBackupService({ dataStore, logService });
       const entry = await service.createBackup('auto');
 
-      const updated = service.updateBackup(entry!.id, { protected: true });
+      const updated = await service.updateBackup(entry!.id, { protected: true });
       expect(updated!.protected).toBe(true);
     });
 
-    it('should return null for non-existent backup', () => {
+    it('should return null for non-existent backup', async () => {
       const service = createBackupService({ dataStore, logService });
-      expect(service.updateBackup('non-existent', { label: 'test' })).toBeNull();
+      expect(await service.updateBackup('non-existent', { label: 'test' })).toBeNull();
     });
   });
 
@@ -239,8 +272,8 @@ describe('Backup Service', () => {
       await service.createBackup('auto', 'auto-3');
       await service.createBackup('auto', 'auto-4');
 
-      const backups = service.listBackups();
-      const autoBackups = backups.filter((b) => b.type === 'auto');
+      const backups = await service.listBackups();
+      const autoBackups = backups.filter((b: any) => b.type === 'auto');
       expect(autoBackups.length).toBeLessThanOrEqual(3);
     });
 
@@ -248,14 +281,14 @@ describe('Backup Service', () => {
       const service = createBackupService({ dataStore, logService });
 
       const first = await service.createBackup('auto', 'protected-one');
-      service.updateBackup(first!.id, { protected: true });
+      await service.updateBackup(first!.id, { protected: true });
 
       await service.createBackup('auto', 'auto-2');
       await service.createBackup('auto', 'auto-3');
       await service.createBackup('auto', 'auto-4');
 
-      const backups = service.listBackups();
-      const protectedBackup = backups.find((b) => b.id === first!.id);
+      const backups = await service.listBackups();
+      const protectedBackup = backups.find((b: any) => b.id === first!.id);
       expect(protectedBackup).toBeDefined();
     });
 
@@ -268,8 +301,8 @@ describe('Backup Service', () => {
       await service.createBackup('auto', 'auto-2');
       await service.createBackup('auto', 'auto-3');
 
-      const backups = service.listBackups();
-      const manualBackups = backups.filter((b) => b.type === 'manual');
+      const backups = await service.listBackups();
+      const manualBackups = backups.filter((b: any) => b.type === 'manual');
       expect(manualBackups).toHaveLength(2);
     });
   });
@@ -293,7 +326,8 @@ describe('Backup Service', () => {
       const second = await service.createStartupBackup();
       expect(second).toBeNull();
 
-      expect(service.listBackups().filter((b) => b.type === 'startup')).toHaveLength(1);
+      const backups = await service.listBackups();
+      expect(backups.filter((b: any) => b.type === 'startup')).toHaveLength(1);
     });
 
     it('should not create backup when BACKUP_ENABLED is false', async () => {
@@ -333,36 +367,6 @@ describe('Backup Service', () => {
       const service = createBackupService({ dataStore, logService });
       service.startScheduler();
       service.stopScheduler();
-    });
-  });
-
-  describe('manifest resilience', () => {
-    it('should handle missing manifest file', () => {
-      const service = createBackupService({ dataStore, logService });
-      // No manifest file exists yet — should return empty
-      expect(service.listBackups()).toEqual([]);
-    });
-
-    it('should handle corrupted manifest file', async () => {
-      fs.writeFileSync(join(backupDir, 'backups-manifest.json'), 'not valid json');
-      const service = createBackupService({ dataStore, logService });
-      // Should treat as empty manifest
-      expect(service.listBackups()).toEqual([]);
-
-      // Should be able to create a new backup (resets manifest)
-      const entry = await service.createBackup('manual');
-      expect(entry).not.toBeNull();
-      expect(service.listBackups()).toHaveLength(1);
-    });
-
-    it('should handle manifest with wrong version', () => {
-      fs.writeFileSync(
-        join(backupDir, 'backups-manifest.json'),
-        JSON.stringify({ version: 99, backups: [{ id: 'old' }] })
-      );
-      const service = createBackupService({ dataStore, logService });
-      // Should treat as empty since version doesn't match
-      expect(service.listBackups()).toEqual([]);
     });
   });
 });

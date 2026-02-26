@@ -48,6 +48,19 @@ const createDataStore = ({ rootDir }) => {
           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
       `);
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS backups (
+          id TEXT PRIMARY KEY,
+          filename TEXT NOT NULL,
+          type TEXT NOT NULL,
+          label TEXT,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          size_bytes INTEGER NOT NULL,
+          team_count INTEGER NOT NULL DEFAULT 0,
+          protected BOOLEAN NOT NULL DEFAULT FALSE,
+          data BYTEA NOT NULL
+        )
+      `);
       console.info('[Server] Using PostgreSQL database (multi-pod ready)');
     } finally {
       client.release();
@@ -118,6 +131,19 @@ const createDataStore = ({ rootDir }) => {
         key TEXT PRIMARY KEY,
         value TEXT NOT NULL,
         updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )`
+    ).run();
+    db.prepare(
+      `CREATE TABLE IF NOT EXISTS backups (
+        id TEXT PRIMARY KEY,
+        filename TEXT NOT NULL,
+        type TEXT NOT NULL,
+        label TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        size_bytes INTEGER NOT NULL,
+        team_count INTEGER NOT NULL DEFAULT 0,
+        protected INTEGER NOT NULL DEFAULT 0,
+        data BLOB NOT NULL
       )`
     ).run();
     return db;
@@ -757,6 +783,188 @@ const createDataStore = ({ rootDir }) => {
   };
 
   // ---------------------------------------------------------------------------
+  // Backup storage (replaces filesystem-based backups for multi-pod support)
+  // ---------------------------------------------------------------------------
+
+  const saveBackup = async (entry, compressedData) => {
+    if (usePostgres) {
+      await pgPool.query(
+        `INSERT INTO backups (id, filename, type, label, created_at, size_bytes, team_count, protected, data)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        [entry.id, entry.filename, entry.type, entry.label || null, entry.createdAt,
+         entry.sizeBytes, entry.teamCount, entry.protected || false, compressedData]
+      );
+    } else {
+      sqliteDb.prepare(
+        `INSERT INTO backups (id, filename, type, label, created_at, size_bytes, team_count, protected, data)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).run(entry.id, entry.filename, entry.type, entry.label || null, entry.createdAt,
+            entry.sizeBytes, entry.teamCount, entry.protected ? 1 : 0, compressedData);
+    }
+  };
+
+  const listBackups = async () => {
+    if (usePostgres) {
+      const result = await pgPool.query(
+        `SELECT id, filename, type, label, created_at, size_bytes, team_count, protected
+         FROM backups ORDER BY created_at DESC`
+      );
+      return result.rows.map((row) => ({
+        id: row.id,
+        filename: row.filename,
+        type: row.type,
+        label: row.label || undefined,
+        createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
+        sizeBytes: row.size_bytes,
+        teamCount: row.team_count,
+        protected: !!row.protected
+      }));
+    } else {
+      const rows = sqliteDb.prepare(
+        `SELECT id, filename, type, label, created_at, size_bytes, team_count, protected
+         FROM backups ORDER BY created_at DESC`
+      ).all();
+      return rows.map((row) => ({
+        id: row.id,
+        filename: row.filename,
+        type: row.type,
+        label: row.label || undefined,
+        createdAt: row.created_at,
+        sizeBytes: row.size_bytes,
+        teamCount: row.team_count,
+        protected: !!row.protected
+      }));
+    }
+  };
+
+  const getBackupData = async (id) => {
+    if (usePostgres) {
+      const result = await pgPool.query(
+        'SELECT data, filename FROM backups WHERE id = $1', [id]
+      );
+      if (result.rows.length === 0) return null;
+      return { data: result.rows[0].data, filename: result.rows[0].filename };
+    } else {
+      const row = sqliteDb.prepare(
+        'SELECT data, filename FROM backups WHERE id = ?'
+      ).get(id);
+      if (!row) return null;
+      return { data: row.data, filename: row.filename };
+    }
+  };
+
+  const deleteBackup = async (id) => {
+    if (usePostgres) {
+      const result = await pgPool.query('DELETE FROM backups WHERE id = $1', [id]);
+      return result.rowCount > 0;
+    } else {
+      const result = sqliteDb.prepare('DELETE FROM backups WHERE id = ?').run(id);
+      return result.changes > 0;
+    }
+  };
+
+  const updateBackup = async (id, updates) => {
+    const setClauses = [];
+    const values = [];
+
+    if (updates.label !== undefined) {
+      setClauses.push(usePostgres ? `label = $${values.length + 1}` : 'label = ?');
+      values.push(updates.label || null);
+    }
+    if (updates.protected !== undefined) {
+      setClauses.push(usePostgres ? `protected = $${values.length + 1}` : 'protected = ?');
+      values.push(usePostgres ? !!updates.protected : (updates.protected ? 1 : 0));
+    }
+
+    if (setClauses.length === 0) return null;
+
+    if (usePostgres) {
+      values.push(id);
+      const result = await pgPool.query(
+        `UPDATE backups SET ${setClauses.join(', ')} WHERE id = $${values.length}
+         RETURNING id, filename, type, label, created_at, size_bytes, team_count, protected`,
+        values
+      );
+      if (result.rows.length === 0) return null;
+      const row = result.rows[0];
+      return {
+        id: row.id, filename: row.filename, type: row.type,
+        label: row.label || undefined,
+        createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
+        sizeBytes: row.size_bytes, teamCount: row.team_count, protected: !!row.protected
+      };
+    } else {
+      values.push(id);
+      const result = sqliteDb.prepare(
+        `UPDATE backups SET ${setClauses.join(', ')} WHERE id = ?`
+      ).run(...values);
+      if (result.changes === 0) return null;
+      const row = sqliteDb.prepare(
+        `SELECT id, filename, type, label, created_at, size_bytes, team_count, protected
+         FROM backups WHERE id = ?`
+      ).get(id);
+      if (!row) return null;
+      return {
+        id: row.id, filename: row.filename, type: row.type,
+        label: row.label || undefined, createdAt: row.created_at,
+        sizeBytes: row.size_bytes, teamCount: row.team_count, protected: !!row.protected
+      };
+    }
+  };
+
+  const getRecentStartupBackup = async (withinMs) => {
+    const cutoff = new Date(Date.now() - withinMs).toISOString();
+    if (usePostgres) {
+      const result = await pgPool.query(
+        `SELECT id FROM backups WHERE type = 'startup' AND created_at > $1 LIMIT 1`,
+        [cutoff]
+      );
+      return result.rows.length > 0 ? result.rows[0] : null;
+    } else {
+      const row = sqliteDb.prepare(
+        `SELECT id FROM backups WHERE type = 'startup' AND created_at > ? LIMIT 1`
+      ).get(cutoff);
+      return row || null;
+    }
+  };
+
+  const purgeOldBackups = async (types, maxCount) => {
+    // Get non-protected backups of given types, ordered oldest first
+    const typePlaceholders = usePostgres
+      ? types.map((_, i) => `$${i + 1}`).join(', ')
+      : types.map(() => '?').join(', ');
+
+    const protectedVal = usePostgres ? false : 0;
+
+    if (usePostgres) {
+      const countResult = await pgPool.query(
+        `SELECT id FROM backups WHERE type IN (${typePlaceholders}) AND protected = $${types.length + 1}
+         ORDER BY created_at ASC`,
+        [...types, protectedVal]
+      );
+      const excess = countResult.rows.length - maxCount;
+      if (excess <= 0) return 0;
+
+      const idsToDelete = countResult.rows.slice(0, excess).map((r) => r.id);
+      const idPlaceholders = idsToDelete.map((_, i) => `$${i + 1}`).join(', ');
+      await pgPool.query(`DELETE FROM backups WHERE id IN (${idPlaceholders})`, idsToDelete);
+      return excess;
+    } else {
+      const rows = sqliteDb.prepare(
+        `SELECT id FROM backups WHERE type IN (${typePlaceholders}) AND protected = ?
+         ORDER BY created_at ASC`
+      ).all(...types, protectedVal);
+      const excess = rows.length - maxCount;
+      if (excess <= 0) return 0;
+
+      const idsToDelete = rows.slice(0, excess).map((r) => r.id);
+      const idPlaceholders = idsToDelete.map(() => '?').join(', ');
+      sqliteDb.prepare(`DELETE FROM backups WHERE id IN (${idPlaceholders})`).run(...idsToDelete);
+      return excess;
+    }
+  };
+
+  // ---------------------------------------------------------------------------
   // Init
   // ---------------------------------------------------------------------------
 
@@ -808,6 +1016,15 @@ const createDataStore = ({ rootDir }) => {
 
     // Migration
     migrateFromLegacyFormat,
+
+    // Backup storage
+    saveBackup,
+    listBackups,
+    getBackupData,
+    deleteBackup,
+    updateBackup,
+    getRecentStartupBackup,
+    purgeOldBackups,
 
     // Infra
     getPgPool,

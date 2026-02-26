@@ -661,7 +661,7 @@ This notification was sent from RetroGemini.
     }
 
     try {
-      const backups = backupService.listBackups();
+      const backups = await backupService.listBackups();
       const config = backupService.getBackupConfig();
       res.json({ backups, config });
     } catch (err) {
@@ -699,7 +699,7 @@ This notification was sent from RetroGemini.
         return res.status(400).json({ error: 'missing_backup_id' });
       }
 
-      const result = backupService.getBackupPath(backupId);
+      const result = await backupService.getBackupData(backupId);
       if (!result) {
         return res.status(404).json({ error: 'backup_not_found' });
       }
@@ -707,7 +707,7 @@ This notification was sent from RetroGemini.
       res.setHeader('Content-Type', 'application/gzip');
       res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
       res.setHeader('Cache-Control', 'no-store');
-      res.sendFile(result.filePath);
+      res.send(result.data);
     } catch (err) {
       console.error('[Server] Failed to download backup', err);
       res.status(500).json({ error: 'download_failed' });
@@ -747,7 +747,7 @@ This notification was sent from RetroGemini.
         return res.status(400).json({ error: 'missing_backup_id' });
       }
 
-      const success = backupService.deleteBackup(backupId);
+      const success = await backupService.deleteBackup(backupId);
       if (!success) {
         return res.status(404).json({ error: 'backup_not_found' });
       }
@@ -773,7 +773,7 @@ This notification was sent from RetroGemini.
       if (label !== undefined) updates.label = label;
       if (isProtected !== undefined) updates.protected = isProtected;
 
-      const entry = backupService.updateBackup(backupId, updates);
+      const entry = await backupService.updateBackup(backupId, updates);
       if (!entry) {
         return res.status(404).json({ error: 'backup_not_found' });
       }
