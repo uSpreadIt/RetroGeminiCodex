@@ -4,7 +4,21 @@ import { gzipSync, gunzipSync } from 'zlib';
 import { randomBytes } from 'crypto';
 
 const createBackupService = ({ dataStore, logService }) => {
-  const BACKUP_DIR = process.env.BACKUP_DIR || '/data/backups';
+  const resolveBackupDir = () => {
+    if (process.env.BACKUP_DIR) return process.env.BACKUP_DIR;
+    const candidates = ['/data/backups', join('/tmp', 'backups')];
+    for (const candidate of candidates) {
+      try {
+        fs.mkdirSync(candidate, { recursive: true });
+        return candidate;
+      } catch {
+        // Try next candidate
+      }
+    }
+    return candidates[candidates.length - 1];
+  };
+
+  const BACKUP_DIR = resolveBackupDir();
   const BACKUP_ENABLED = process.env.BACKUP_ENABLED !== 'false';
   const BACKUP_INTERVAL_HOURS = Math.max(1, Number(process.env.BACKUP_INTERVAL_HOURS) || 24);
   const BACKUP_MAX_COUNT = Math.max(1, Number(process.env.BACKUP_MAX_COUNT) || 7);
